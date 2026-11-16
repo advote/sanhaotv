@@ -1,0 +1,5 @@
+rootProject.name = "sanhaotv"
+include ':app'
+include ':player'
+include ':quickjs'
+include ':pyramid'

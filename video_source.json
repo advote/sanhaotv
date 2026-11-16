@@ -1,0 +1,13 @@
+{
+  "urls": [
+    {
+      "name": "示例视频源",
+      "url": "https://example.com/api.php/api_vod",
+      "searchable": 1,
+      "quickSearch": 1,
+      "filterable": 1
+    }
+  ],
+  "spider": "",
+  "parse": []
+}

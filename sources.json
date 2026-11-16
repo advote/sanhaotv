@@ -1,0 +1,13 @@
+{
+  "name": "三好TV 云端源配置",
+  "version": 1,
+  "video": "https://raw.githubusercontent.com/advote/sanhaotv/main/video_source.json",
+  "live": "https://raw.githubusercontent.com/advote/sanhaotv/main/live_source.txt",
+  "urls": [
+    "https://raw.githubusercontent.com/advote/sanhaotv/main/video_source.json"
+  ],
+  "live_urls": [
+    "https://raw.githubusercontent.com/advote/sanhaotv/main/live_source.txt"
+  ],
+  "note": "应用启动时若本地源地址失效，会自动读取本文件里的 video/live 地址写入本地。请将 advote 替换为你的 GitHub 用户名。"
+}
