@@ -1,5 +1,46 @@
 {
-  "urls": [],
-  "spider": "",
-  "parse": []
+  "urls": [
+    {
+      "url": "http://52bsj.vip:81/api/v3/file/get/29899/box2.json?sign=3cVyKZQr3lFAwdB3HK-A7h33e0MnmG6lLB9oWlvSNnM%3D%3A0",
+      "name": "💖月光宝盒家庭版〔多条线路〕"
+    },
+    {
+      "url": "http://我不是.肥猫.love:63/接口禁止贩卖",
+      "name": "💖肥猫Panda〔多条线路〕"
+    },
+    {
+      "url": "http://www.yunwp.cn/api/v3/file/get/1093/1007.json?sign=kJ5EJJLNzf63QKB1ykTZwbbW9vnMfi-2Wjumk-wtL-E%3D%3A0",
+      "name": "☃小马接口〔多条线路〕"
+    },
+    {
+      "url": "http://52bsj.vip:98/wuai",
+      "name": "🌝吾爱〔多条线路〕"
+    },
+    {
+      "url": "http://9xi4o.tk/0725.json",
+      "name": "4K云盘〔多条线路〕"
+    },
+    {
+      "url": "https://raw.iqiq.io/kebedd69/TVbox-interface/main/%E7%94%9C%E8%9C%9C.json",
+      "name": "💎甜蜜线路"
+    },
+    {
+      "url": "https://raw.iqiq.io/liu673cn/box/main/m.json",
+      "name": "🍸老刘备〔多条线路〕"
+    },
+    {
+      "url": "http://www.dmtv.ml/mao/single.json",
+      "name": "🧗‍♀️乱世〔多条线路〕"
+    },
+    {
+      "url": "http://maoyingshi.cc/tvbox/云星日记/1.m3u8",
+      "name": "☁️云星家庭〔纯绿色家庭版〕"
+    }
+  ],
+  "vip": [
+    {
+      "url": "",
+      "name": "默认"
+    }
+  ]
 }
