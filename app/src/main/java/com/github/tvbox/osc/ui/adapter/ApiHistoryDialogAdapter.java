@@ -96,6 +96,9 @@ public class ApiHistoryDialogAdapter extends ListAdapter<String, ApiHistoryDialo
         holder.itemView.findViewById(R.id.tvDel).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                // 三好TV：初始（默认）地址不可删除，始终保留在历史第一条
+                if (HistoryHelper.isDefaultApi(value))
+                    return;
                 if (select.equals(value))
                     return;
                 notifyItemRemoved(data.indexOf(value));
