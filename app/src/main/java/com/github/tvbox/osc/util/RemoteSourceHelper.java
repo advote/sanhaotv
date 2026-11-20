@@ -147,7 +147,13 @@ public final class RemoteSourceHelper {
 
     /**
      * 内容更新检测：拉取云端配置，对比 video_version / live_version。
-     * 版本升高且当前生效源仍是云端源时，下载最新内容覆盖本地缓存文件。
+     *
+     * <p>重要（2026-11-20 修复）：早期版本在这里直接下载源内容并覆盖
+     * filesDir/MD5(url) 缓存文件，与 TVBox 原生加载/多源切换流程并发时
+     * 会产生冲突，疑似导致进入点播页时崩溃。现改为更安全的策略——
+     * 版本升高时仅删除旧缓存文件，让 App 走原生 loadConfig 流程
+     * 自行重新拉取最新内容并落盘，全程复用 TVBox 原生解析逻辑，
+     * 不再由本类手工写入任何源内容缓存，避免格式与并发问题。</p>
      */
     private static void checkForUpdates() {
         String configUrl = Hawk.get(KEY_CLOUD_CONFIG, DEFAULT_CONFIG_URL);
@@ -164,59 +170,38 @@ public final class RemoteSourceHelper {
             return;
         }
 
-        boolean liveUpdated = false;
-        boolean videoUpdated = false;
-
-        // ---- 直播源更新 ----
+        // ---- 直播源更新：仅删除旧缓存，交由原生流程重拉 ----
         if (!TextUtils.isEmpty(cloud.live) && cloud.liveVersion > 0) {
             long localVer = Hawk.get(KEY_LIVE_VERSION, 0L);
             String currentLive = Hawk.get(HawkConfig.LIVE_API_URL, "");
             if (cloud.liveVersion > localVer && isSameSource(currentLive, cloud.live)) {
-                String content = httpGet(cloud.live);
-                if (!TextUtils.isEmpty(content) && looksLikeLiveSource(content)) {
-                    if (writeCache(cloud.live, content)) {
-                        Hawk.put(KEY_LIVE_VERSION, cloud.liveVersion);
-                        liveUpdated = true;
-                        LOG.i(TAG + " live source updated to version " + cloud.liveVersion);
+                if (deleteCache(cloud.live)) {
+                    Hawk.put(KEY_LIVE_VERSION, cloud.liveVersion);
+                    LOG.i(TAG + " live cache removed, will refetch on next enter");
+                    // 清空内存直播列表，使下次进入直播页重新加载
+                    try {
+                        ApiConfig.get().clearLiveCache();
+                    } catch (Throwable t) {
+                        LOG.e(TAG + " clear live cache failed: " + t.getMessage());
                     }
-                } else {
-                    LOG.e(TAG + " live source download invalid, skip update");
                 }
             }
         }
 
-        // ---- 点播源更新 ----
+        // ---- 点播源更新：仅删除旧缓存与多源切换状态，交由原生流程重拉 ----
         if (!TextUtils.isEmpty(cloud.video) && cloud.videoVersion > 0) {
             long localVer = Hawk.get(KEY_VIDEO_VERSION, 0L);
             String currentVideo = Hawk.get(HawkConfig.API_URL, "");
             if (cloud.videoVersion > localVer && isSameSource(currentVideo, cloud.video)) {
-                String content = httpGet(cloud.video);
-                if (!TextUtils.isEmpty(content) && looksLikeVideoSource(content)) {
-                    if (writeCache(cloud.video, content)) {
-                        Hawk.put(KEY_VIDEO_VERSION, cloud.videoVersion);
-                        videoUpdated = true;
-                        LOG.i(TAG + " video source updated to version " + cloud.videoVersion);
-                    }
-                } else {
-                    LOG.e(TAG + " video source download invalid, skip update");
+                if (deleteCache(cloud.video)) {
+                    // 清除多源集合的线路切换状态，避免因旧的子源索引导致加载异常
+                    try {
+                        HistoryHelper.clearApiLineList();
+                    } catch (Throwable ignored) {}
+                    Hawk.put(KEY_VIDEO_VERSION, cloud.videoVersion);
+                    LOG.i(TAG + " video cache removed, will refetch on next enter");
                 }
             }
-        }
-
-        // 直播缓存被更新：清空 ApiConfig 内存列表，使下次进入直播页时重新读缓存
-        if (liveUpdated) {
-            try {
-                ApiConfig.get().clearLiveCache();
-                LOG.i(TAG + " live cache cleared, will reload on next enter");
-            } catch (Throwable t) {
-                LOG.e(TAG + " clear live cache failed: " + t.getMessage());
-            }
-        }
-        if (videoUpdated) {
-            try {
-                // 点播配置在 HomeActivity 每次进入按 needRefresh 处理；这里仅记录，重启后生效
-                LOG.i(TAG + " video cache updated, applies on next config load");
-            } catch (Throwable ignored) {}
         }
     }
 
@@ -247,8 +232,30 @@ public final class RemoteSourceHelper {
     }
 
     /**
+     * 删除 ApiConfig 使用的缓存文件：filesDir / MD5(sourceUrl)。
+     * 删除后 App 走原生 loadConfig/loadLiveConfig 流程会自动重新从网络拉取最新内容，
+     * 完全复用 TVBox 原生解析逻辑，避免手工写缓存带来的格式/并发问题。
+     */
+    private static boolean deleteCache(String sourceUrl) {
+        try {
+            File dir = App.getInstance().getFilesDir();
+            File cache = new File(dir.getAbsolutePath() + "/" + MD5.encode(sourceUrl));
+            boolean deleted = false;
+            if (cache.exists()) deleted = cache.delete();
+            // 同时清理可能残留的临时文件
+            File tmp = new File(cache.getAbsolutePath() + ".tmp");
+            if (tmp.exists()) tmp.delete();
+            return deleted || !cache.exists();
+        } catch (Throwable t) {
+            LOG.e(TAG + " deleteCache failed: " + t.getMessage());
+            return false;
+        }
+    }
+
+    /**
      * 把内容写入 ApiConfig 使用的缓存文件：filesDir / MD5(sourceUrl)。
      * 与 ApiConfig.loadConfig/loadLiveConfig 的缓存路径保持一致。
+     * 现已不再使用，保留仅为兼容。
      */
     private static boolean writeCache(String sourceUrl, String content) {
         File dir = App.getInstance().getFilesDir();
