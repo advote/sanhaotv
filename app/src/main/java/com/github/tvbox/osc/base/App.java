@@ -74,6 +74,13 @@ public class App extends MultiDexApplication {
         } else if (Hawk.get(HawkConfig.PLAY_TYPE, 2) == 0) {
             Hawk.put(HawkConfig.PLAY_TYPE, 2);
         }
+        // 三好TV：确保初始地址永久存在于配置历史第一条（兼容老用户升级）
+        com.github.tvbox.osc.util.HistoryHelper.ensureApiHistory(
+                com.github.tvbox.osc.util.HawkConfig.API_HISTORY,
+                com.github.tvbox.osc.util.HistoryHelper.DEFAULT_VIDEO_API);
+        com.github.tvbox.osc.util.HistoryHelper.ensureApiHistory(
+                com.github.tvbox.osc.util.HawkConfig.LIVE_API_HISTORY,
+                com.github.tvbox.osc.util.HistoryHelper.DEFAULT_LIVE_API);
     }
 
     public static App getInstance() {
