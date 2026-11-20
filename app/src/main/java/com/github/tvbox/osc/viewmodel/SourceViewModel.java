@@ -829,6 +829,13 @@ public class SourceViewModel extends ViewModel {
         String id = urlid;
     
         SourceBean sourceBean = ApiConfig.get().getSource(sourceKey);
+        if (sourceBean == null) {
+            // 三好TV：sourceKey 无效（如豆瓣首页影片未配置对应源）时，
+            // 返回空详情而不是空指针崩溃
+            LOG.e("getDetail: null sourceBean for key=" + sourceKey);
+            detailResult.postValue(createEmptyDetail(urlid, sourceKey));
+            return;
+        }
         if (isPushFallback(sourceKey, sourceBean)) {
             detailResult.postValue(createPushDetail(urlid, sourceKey));
             return;
@@ -1381,6 +1388,20 @@ public class SourceViewModel extends ViewModel {
 
     private boolean isCastPushUrl(String url) {
         return !TextUtils.isEmpty(url) && url.contains(PUSH_HEADERS_MARKER);
+    }
+
+    /**
+     * 三好TV：当 sourceKey 无对应有效源时，构造一个带提示信息的空详情，
+     * 让详情页走“无可用数据”分支友好退出，避免空指针崩溃。
+     */
+    private AbsXml createEmptyDetail(String url, String sourceKey) {
+        AbsXml data = new AbsXml();
+        data.sourceKey = sourceKey;
+        data.msg = "暂无可用的点播源，请先在设置中配置有效的视频接口";
+        Movie movie = new Movie();
+        movie.videoList = new ArrayList<>();
+        data.movie = movie;
+        return data;
     }
 
     private AbsXml createPushDetail(String url, String sourceKey) {
