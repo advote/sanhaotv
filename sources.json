@@ -3,13 +3,13 @@
   "version": 1,
   "video": "https://raw.githubusercontent.com/advote/sanhaotv/main/video_source.json",
   "live": "https://raw.githubusercontent.com/advote/sanhaotv/main/live_source.txt",
-  "video_version": 2026112001,
-  "live_version": 2026112001,
+  "video_version": 2026112002,
+  "live_version": 2026112002,
   "urls": [
     "https://raw.githubusercontent.com/advote/sanhaotv/main/video_source.json"
   ],
   "live_urls": [
     "https://raw.githubusercontent.com/advote/sanhaotv/main/live_source.txt"
   ],
-  "note": "应用启动时检测 video_version/live_version，若高于本地记录则自动下载最新源内容覆盖本地缓存。用户手动设置的源不会被覆盖。以后每次更新 live_source.txt 或 video_source.json 时，请同步把对应版本号 +1。"
+  "note": "应用启动时检测 video_version/live_version，若高于本地记录则删除本地旧缓存并走原生流程重新拉取最新源。用户手动设置的源不会被覆盖。以后每次更新 live_source.txt 或 video_source.json 时，请同步把对应版本号 +1。"
 }
