@@ -92,7 +92,7 @@ public class ApiDialog extends BaseDialog {
         findViewById(R.id.vodHistory).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                ArrayList<String> history = Hawk.get(HawkConfig.API_HISTORY, new ArrayList<String>());
+                ArrayList<String> history = HistoryHelper.ensureApiHistory(HawkConfig.API_HISTORY, HistoryHelper.DEFAULT_VIDEO_API);
                 if (history.isEmpty()) {
                     Toast.makeText(getContext(), "点播历史为空", Toast.LENGTH_SHORT).show();
                     return;
@@ -112,6 +112,9 @@ public class ApiDialog extends BaseDialog {
 
                     @Override
                     public void del(String value, ArrayList<String> data) {
+                        // 保险：删除后仍确保初始地址置顶
+                        data.remove(HistoryHelper.DEFAULT_VIDEO_API);
+                        data.add(0, HistoryHelper.DEFAULT_VIDEO_API);
                         Hawk.put(HawkConfig.API_HISTORY, data);
                     }
                 }, history, idx);
@@ -121,7 +124,7 @@ public class ApiDialog extends BaseDialog {
         findViewById(R.id.apiHistory).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                ArrayList<String> history = Hawk.get(HawkConfig.LIVE_API_HISTORY, new ArrayList<String>());
+                ArrayList<String> history = HistoryHelper.ensureApiHistory(HawkConfig.LIVE_API_HISTORY, HistoryHelper.DEFAULT_LIVE_API);
                 if (history.isEmpty()){
                     Toast.makeText(getContext(), "直播历史为空", Toast.LENGTH_SHORT).show();
                     return;
@@ -142,6 +145,9 @@ public class ApiDialog extends BaseDialog {
 
                     @Override
                     public void del(String value, ArrayList<String> data) {
+                        // 保险：删除后仍确保初始地址置顶
+                        data.remove(HistoryHelper.DEFAULT_LIVE_API);
+                        data.add(0, HistoryHelper.DEFAULT_LIVE_API);
                         Hawk.put(HawkConfig.LIVE_API_HISTORY, data);
                     }
                 }, history, idx);
