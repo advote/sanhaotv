@@ -41,6 +41,7 @@ public class App extends MultiDexApplication {
     public void onCreate() {
         super.onCreate();
         instance = this;
+        CrashHandler.init(this); // 三好TV：全局崩溃捕获，便于定位问题
         initParams();
         RemoteSourceHelper.syncOnStartup(); // 三好TV：本地源失效时自动从 GitHub 拉取
         // OKGo
