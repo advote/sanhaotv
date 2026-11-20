@@ -2,6 +2,7 @@ package com.github.tvbox.osc.ui.dialog;
 
 import android.app.Activity;
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
@@ -215,9 +216,22 @@ public class ApiDialog extends BaseDialog {
     }
 
     private void refreshQRCode() {
-        String address = ControlManager.get().getAddress(false);
-        tvAddress.setText(String.format("手机/电脑扫描上方二维码或者直接浏览器访问地址\n%s", address));
-        ivQRCode.setImageBitmap(QRCodeGen.generateBitmap(address+"api.html", AutoSizeUtils.mm2px(getContext(), 300), AutoSizeUtils.mm2px(getContext(), 300)));
+        try {
+            String address = ControlManager.get().getAddress(false);
+            if (address == null) address = "";
+            tvAddress.setText(String.format("手机/电脑扫描上方二维码或者直接浏览器访问地址\n%s", address));
+            int size = AutoSizeUtils.mm2px(getContext(), 300);
+            if (size <= 0) size = 300;
+            Bitmap bmp = QRCodeGen.generateBitmap(address + "api.html", size, size);
+            if (bmp != null && ivQRCode != null) {
+                ivQRCode.setImageBitmap(bmp);
+            }
+        } catch (Throwable t) {
+            // 二维码生成失败不应导致配置弹窗/应用崩溃
+            if (tvAddress != null) {
+                tvAddress.setText("扫码配置暂不可用，请直接在下方输入框填写接口地址");
+            }
+        }
     }
 
     private void saveAndDismiss() {
