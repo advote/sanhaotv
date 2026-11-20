@@ -7,6 +7,11 @@ public class HistoryHelper {
     private static final Integer[] hisNumArray = {30,50,100};
     private static final String API_LINE_SPLIT = "\t";
 
+    /** 三好TV 内置的初始（默认）源地址——始终固定在配置历史第一条，且不可删除。 */
+    public static final String DEFAULT_VIDEO_API = "https://raw.githubusercontent.com/advote/sanhaotv/main/video_source.json";
+    public static final String DEFAULT_LIVE_API = "https://raw.githubusercontent.com/advote/sanhaotv/main/live_source.txt";
+    private static final int API_HISTORY_MAX = 6;
+
     public static String getHistoryNumName(int index){
         Integer value = getHisNum(index);
         return value + "条";
@@ -38,24 +43,50 @@ public class HistoryHelper {
         Hawk.put(HawkConfig.SEARCH_HISTORY, new ArrayList<String>());
     }
 
-    public static void setLiveApiHistory(String value){
-        ArrayList<String> history = Hawk.get(HawkConfig.LIVE_API_HISTORY, new ArrayList<String>());
-        if (!history.contains(value)) {
-            history.add(0, value);
+    /**
+     * 把初始地址固定到历史列表第一条：先移除已存在的初始地址，再插到索引 0。
+     * 这样无论新增/删除/裁剪，初始地址永远位于第一条且不会被挤掉。
+     */
+    private static void pinDefaultFirst(ArrayList<String> history, String defaultApi) {
+        if (defaultApi == null || defaultApi.isEmpty()) return;
+        history.remove(defaultApi);
+        history.add(0, defaultApi);
+    }
+
+    /** 判断某条历史是否为不可删除的初始地址。 */
+    public static boolean isDefaultApi(String value) {
+        return DEFAULT_VIDEO_API.equals(value) || DEFAULT_LIVE_API.equals(value);
+    }
+
+    /** 兼容老用户：读取历史时若缺初始地址则补上并置顶。 */
+    public static ArrayList<String> ensureApiHistory(String key, String defaultApi) {
+        ArrayList<String> history = Hawk.get(key, new ArrayList<String>());
+        pinDefaultFirst(history, defaultApi);
+        if (history.size() > API_HISTORY_MAX) {
+            history.subList(API_HISTORY_MAX, history.size()).clear();
         }
-        if (history.size() > 6) {
-            history.remove(6);
+        Hawk.put(key, history);
+        return history;
+    }
+
+    public static void setLiveApiHistory(String value){
+        ArrayList<String> history = ensureApiHistory(HawkConfig.LIVE_API_HISTORY, DEFAULT_LIVE_API);
+        if (value != null && !value.isEmpty() && !history.contains(value)) {
+            history.add(1, value); // 插在初始地址之后
+        }
+        if (history.size() > API_HISTORY_MAX) {
+            history.subList(API_HISTORY_MAX, history.size()).clear();
         }
         Hawk.put(HawkConfig.LIVE_API_HISTORY, history);
     }
 
     public static void setApiHistory(String value){
-        ArrayList<String> history = Hawk.get(HawkConfig.API_HISTORY, new ArrayList<String>());
-        if (!history.contains(value)) {
-            history.add(0, value);
+        ArrayList<String> history = ensureApiHistory(HawkConfig.API_HISTORY, DEFAULT_VIDEO_API);
+        if (value != null && !value.isEmpty() && !history.contains(value)) {
+            history.add(1, value); // 插在初始地址之后
         }
-        if (history.size() > 6) {
-            history.remove(6);
+        if (history.size() > API_HISTORY_MAX) {
+            history.subList(API_HISTORY_MAX, history.size()).clear();
         }
         Hawk.put(HawkConfig.API_HISTORY, history);
     }
