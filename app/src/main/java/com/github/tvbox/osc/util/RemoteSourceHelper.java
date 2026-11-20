@@ -1,13 +1,20 @@
 package com.github.tvbox.osc.util;
 
+import android.content.Context;
 import android.text.TextUtils;
 
+import com.github.tvbox.osc.api.ApiConfig;
+import com.github.tvbox.osc.base.App;
 import com.orhanobut.hawk.Hawk;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -24,17 +31,20 @@ import java.util.concurrent.Executors;
  *   <li>应用启动时校验本地缓存的「视频源 / 直播源」地址是否仍然可用；</li>
  *   <li>若本地地址为空或网络请求失败（失效），自动从 GitHub 托管的
  *       sources.json 拉取最新源地址并写回本地；</li>
- *   <li>用户手动设置的源拥有最高优先级：只要本地地址可访问，就绝不被云端覆盖。</li>
+ *   <li><b>内容更新检测</b>：若云端 sources.json 里的 video_version / live_version
+ *       高于本地记录，则下载最新源内容覆盖本地缓存文件，使 App 无需重装即可用上新源；</li>
+ *   <li>用户手动设置的源拥有最高优先级：只要本地地址与云端源不同，就绝不覆盖。</li>
  * </ul>
  *
  * <p>云端配置格式（sources.json）：</p>
  * <pre>
  * {
- *   "video": "https://raw.githubusercontent.com/用户名/sanhaotv/main/video_source.json",
- *   "live":  "https://raw.githubusercontent.com/用户名/sanhaotv/main/live_source.txt"
+ *   "video": ".../video_source.json",
+ *   "live":  ".../live_source.txt",
+ *   "video_version": 2026112001,
+ *   "live_version":  2026112001
  * }
  * </pre>
- * 也支持 urls 数组的多线路形式，取第一条可用线路。
  */
 public final class RemoteSourceHelper {
 
@@ -50,8 +60,12 @@ public final class RemoteSourceHelper {
     /** 记录云端源是否已被应用过一次，避免每次启动重复探测网络。 */
     public static final String KEY_LAST_CLOUD_SYNC = "sanhao_last_cloud_sync";
 
-    private static final int CONNECT_TIMEOUT_MS = 6000;
-    private static final int READ_TIMEOUT_MS = 6000;
+    /** 本地已应用的云端内容版本号。 */
+    public static final String KEY_VIDEO_VERSION = "sanhao_video_version";
+    public static final String KEY_LIVE_VERSION = "sanhao_live_version";
+
+    private static final int CONNECT_TIMEOUT_MS = 8000;
+    private static final int READ_TIMEOUT_MS = 15000;
 
     private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
 
@@ -59,6 +73,7 @@ public final class RemoteSourceHelper {
 
     /**
      * 在 App 启动时调用（异步，不阻塞 UI）。
+     * 依次执行：地址失效恢复 → 内容版本更新检测。
      */
     public static void syncOnStartup() {
         EXECUTOR.execute(new Runnable() {
@@ -68,6 +83,11 @@ public final class RemoteSourceHelper {
                     doSync();
                 } catch (Throwable t) {
                     LOG.e(TAG + " sync failed: " + t.getMessage());
+                }
+                try {
+                    checkForUpdates();
+                } catch (Throwable t) {
+                    LOG.e(TAG + " update check failed: " + t.getMessage());
                 }
             }
         });
@@ -125,7 +145,136 @@ public final class RemoteSourceHelper {
         return changed;
     }
 
-    /** 判断一个源地址是否可用：空地址视为失效；http(s) 地址做一次轻量 HEAD/GET 探测。 */
+    /**
+     * 内容更新检测：拉取云端配置，对比 video_version / live_version。
+     * 版本升高且当前生效源仍是云端源时，下载最新内容覆盖本地缓存文件。
+     */
+    private static void checkForUpdates() {
+        String configUrl = Hawk.get(KEY_CLOUD_CONFIG, DEFAULT_CONFIG_URL);
+        if (TextUtils.isEmpty(configUrl)) configUrl = DEFAULT_CONFIG_URL;
+
+        String json = httpGet(configUrl);
+        if (TextUtils.isEmpty(json)) {
+            LOG.i(TAG + " update check: fetch config failed");
+            return;
+        }
+        CloudConfig cloud = parseCloudConfig(json);
+        if (cloud == null) {
+            LOG.i(TAG + " update check: parse config failed");
+            return;
+        }
+
+        boolean liveUpdated = false;
+        boolean videoUpdated = false;
+
+        // ---- 直播源更新 ----
+        if (!TextUtils.isEmpty(cloud.live) && cloud.liveVersion > 0) {
+            long localVer = Hawk.get(KEY_LIVE_VERSION, 0L);
+            String currentLive = Hawk.get(HawkConfig.LIVE_API_URL, "");
+            if (cloud.liveVersion > localVer && isSameSource(currentLive, cloud.live)) {
+                String content = httpGet(cloud.live);
+                if (!TextUtils.isEmpty(content) && looksLikeLiveSource(content)) {
+                    if (writeCache(cloud.live, content)) {
+                        Hawk.put(KEY_LIVE_VERSION, cloud.liveVersion);
+                        liveUpdated = true;
+                        LOG.i(TAG + " live source updated to version " + cloud.liveVersion);
+                    }
+                } else {
+                    LOG.e(TAG + " live source download invalid, skip update");
+                }
+            }
+        }
+
+        // ---- 点播源更新 ----
+        if (!TextUtils.isEmpty(cloud.video) && cloud.videoVersion > 0) {
+            long localVer = Hawk.get(KEY_VIDEO_VERSION, 0L);
+            String currentVideo = Hawk.get(HawkConfig.API_URL, "");
+            if (cloud.videoVersion > localVer && isSameSource(currentVideo, cloud.video)) {
+                String content = httpGet(cloud.video);
+                if (!TextUtils.isEmpty(content) && looksLikeVideoSource(content)) {
+                    if (writeCache(cloud.video, content)) {
+                        Hawk.put(KEY_VIDEO_VERSION, cloud.videoVersion);
+                        videoUpdated = true;
+                        LOG.i(TAG + " video source updated to version " + cloud.videoVersion);
+                    }
+                } else {
+                    LOG.e(TAG + " video source download invalid, skip update");
+                }
+            }
+        }
+
+        // 直播缓存被更新：清空 ApiConfig 内存列表，使下次进入直播页时重新读缓存
+        if (liveUpdated) {
+            try {
+                ApiConfig.get().clearLiveCache();
+                LOG.i(TAG + " live cache cleared, will reload on next enter");
+            } catch (Throwable t) {
+                LOG.e(TAG + " clear live cache failed: " + t.getMessage());
+            }
+        }
+        if (videoUpdated) {
+            try {
+                // 点播配置在 HomeActivity 每次进入按 needRefresh 处理；这里仅记录，重启后生效
+                LOG.i(TAG + " video cache updated, applies on next config load");
+            } catch (Throwable ignored) {}
+        }
+    }
+
+    /** 判断当前生效源是否就是云端源（去除空白与末尾斜杠后比较），避免覆盖用户手动改的源。 */
+    private static boolean isSameSource(String current, String cloud) {
+        if (TextUtils.isEmpty(current)) return true; // 未设置时允许云端写入
+        return normalize(current).equals(normalize(cloud));
+    }
+
+    private static String normalize(String s) {
+        if (s == null) return "";
+        String t = s.trim();
+        while (t.endsWith("/")) t = t.substring(0, t.length() - 1);
+        return t;
+    }
+
+    /** 简单校验直播源内容：含 #genre# 或 http 链接或 EXTINF。 */
+    private static boolean looksLikeLiveSource(String content) {
+        return content.contains("#genre#") || content.contains("#EXTM3U")
+                || content.contains("http://") || content.contains("https://");
+    }
+
+    /** 简单校验点播源内容：应为 JSON 且含 urls / api 结构。 */
+    private static boolean looksLikeVideoSource(String content) {
+        String t = content.trim();
+        boolean isJson = (t.startsWith("{") && t.endsWith("}")) || (t.startsWith("[") && t.endsWith("]"));
+        return isJson && (t.contains("url") || t.contains("api"));
+    }
+
+    /**
+     * 把内容写入 ApiConfig 使用的缓存文件：filesDir / MD5(sourceUrl)。
+     * 与 ApiConfig.loadConfig/loadLiveConfig 的缓存路径保持一致。
+     */
+    private static boolean writeCache(String sourceUrl, String content) {
+        File dir = App.getInstance().getFilesDir();
+        File cache = new File(dir.getAbsolutePath() + "/" + MD5.encode(sourceUrl));
+        FileOutputStream fos = null;
+        try {
+            if (!dir.exists()) dir.mkdirs();
+            File tmp = new File(cache.getAbsolutePath() + ".tmp");
+            fos = new FileOutputStream(tmp);
+            fos.write(content.getBytes(StandardCharsets.UTF_8));
+            fos.flush();
+            fos.close();
+            fos = null;
+            if (cache.exists()) cache.delete();
+            return tmp.renameTo(cache);
+        } catch (Throwable t) {
+            LOG.e(TAG + " writeCache failed: " + t.getMessage());
+            return false;
+        } finally {
+            if (fos != null) {
+                try { fos.close(); } catch (Throwable ignored) {}
+            }
+        }
+    }
+
+    /** 判断一个源地址是否可用：空地址视为失效；http(s) 地址做一次轻量 GET 探测。 */
     private static boolean isUrlReachable(String url) {
         if (TextUtils.isEmpty(url)) return false;
         String trimmed = url.trim();
@@ -152,10 +301,10 @@ public final class RemoteSourceHelper {
         }
     }
 
-    /** 简单的 HTTP GET，返回字符串；失败返回 null。 */
+    /** 简单的 HTTP GET，返回字符串；失败返回 null。上限 8MB。 */
     private static String httpGet(String urlStr) {
         HttpURLConnection conn = null;
-        BufferedReader reader = null;
+        InputStream is = null;
         try {
             URL url = new URL(urlStr);
             conn = (HttpURLConnection) url.openConnection();
@@ -166,30 +315,35 @@ public final class RemoteSourceHelper {
             conn.setRequestProperty("User-Agent", "Mozilla/5.0 (compatible; SanHaoTV/1.0)");
             int code = conn.getResponseCode();
             if (code < 200 || code >= 400) return null;
-            reader = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                sb.append(line).append('\n');
-                if (sb.length() > 1024 * 1024) break; // 上限 1MB，防止异常大文件
+            is = conn.getInputStream();
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int len;
+            int total = 0;
+            while ((len = is.read(buf)) != -1) {
+                bos.write(buf, 0, len);
+                total += len;
+                if (total > 8 * 1024 * 1024) break; // 上限 8MB
             }
-            return sb.toString();
+            return new String(bos.toByteArray(), StandardCharsets.UTF_8);
         } catch (Throwable t) {
             LOG.e(TAG + " httpGet failed: " + t.getMessage());
             return null;
         } finally {
-            try { if (reader != null) reader.close(); } catch (Throwable ignored) {}
+            try { if (is != null) is.close(); } catch (Throwable ignored) {}
             if (conn != null) conn.disconnect();
         }
     }
 
-    /** 解析云端配置，兼容 {video, live} 与 {urls:[...]} 两种结构。 */
+    /** 解析云端配置，兼容 {video, live, video_version, live_version} 与 urls 数组。 */
     private static CloudConfig parseCloudConfig(String json) {
         try {
             JSONObject obj = new JSONObject(json);
             CloudConfig cfg = new CloudConfig();
             if (obj.has("video")) cfg.video = obj.optString("video", "");
             if (obj.has("live")) cfg.live = obj.optString("live", "");
+            if (obj.has("video_version")) cfg.videoVersion = obj.optLong("video_version", 0L);
+            if (obj.has("live_version")) cfg.liveVersion = obj.optLong("live_version", 0L);
 
             if (TextUtils.isEmpty(cfg.video) && obj.has("urls")) {
                 cfg.video = firstUrl(obj.optJSONArray("urls"));
@@ -226,5 +380,7 @@ public final class RemoteSourceHelper {
     private static final class CloudConfig {
         String video;
         String live;
+        long videoVersion;
+        long liveVersion;
     }
 }
