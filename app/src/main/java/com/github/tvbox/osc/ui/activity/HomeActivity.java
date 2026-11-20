@@ -34,6 +34,7 @@ import com.github.tvbox.osc.R;
 import com.github.tvbox.osc.api.ApiConfig;
 import com.github.tvbox.osc.base.BaseActivity;
 import com.github.tvbox.osc.base.BaseLazyFragment;
+import com.github.tvbox.osc.base.CrashHandler;
 import com.github.tvbox.osc.bean.AbsSortXml;
 import com.github.tvbox.osc.bean.Movie;
 import com.github.tvbox.osc.bean.MovieSort;
@@ -662,9 +663,15 @@ public class HomeActivity extends BaseActivity {
         }
     }
 
+    private static boolean crashReported = false;
+
     @Override
     protected void onResume() {
         super.onResume();
+        if (!crashReported) {
+            crashReported = true;
+            CrashHandler.showLastCrashIfAny(HomeActivity.this);
+        }
         refreshTopInfoTextSize();
         mHandler.removeCallbacks(refreshTopInfoTextSizeRunnable);
         mHandler.postDelayed(refreshTopInfoTextSizeRunnable, 350);
