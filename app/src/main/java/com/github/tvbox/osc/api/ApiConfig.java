@@ -1802,4 +1802,19 @@ public class ApiConfig {
         currentLiveSpider = "";
         clearLoader();
     }
+
+    /**
+     * 三好TV：云端直播源内容更新后清空内存缓存，
+     * 使下次进入直播页时 shouldReloadLiveConfig() 返回 true，
+     * 从而重新读取已被覆盖的本地缓存文件。
+     */
+    public void clearLiveCache() {
+        try {
+            liveChannelGroupList.clear();
+            loadedLiveConfigUrl = "";
+            LOG.i("ApiConfig.clearLiveCache done");
+        } catch (Throwable t) {
+            LOG.e("ApiConfig.clearLiveCache err: " + t.getMessage());
+        }
+    }
 }
