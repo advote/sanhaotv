@@ -269,7 +269,7 @@
                 android:focusable="true"
 
                 android:nextFocusLeft="@+id/tvSetting"
-                android:nextFocusRight="@+id/tvTransfer"
+                android:nextFocusRight="@+id/tvHistory"
                 android:orientation="horizontal"
                 android:paddingLeft="@dimen/vs_8"
                 android:paddingTop="@dimen/vs_8"
@@ -306,6 +306,7 @@
                 android:layout_margin="@dimen/vs_3"
                 android:background="@drawable/shape_user_focus"
                 android:focusable="true"
+                android:visibility="gone"
                 android:nextFocusLeft="@+id/tvOtherConfig"
                 android:nextFocusRight="@+id/tvHistory"
                 android:orientation="horizontal"

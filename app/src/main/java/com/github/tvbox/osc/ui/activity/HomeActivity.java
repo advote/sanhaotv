@@ -632,9 +632,15 @@ public class HomeActivity extends BaseActivity {
         sortFocusView = null;
         currentView = null;
         if (pageAdapter != null) {
-            mViewPager.setAdapter(null);
-            pageAdapter.removeAll();
+            // 三好TV：先摘引用再清理。setAdapter(null) 会同步触发 ViewPager 回调，
+            // 回调可能重入 clearHomePages() 把 pageAdapter 置空，导致此处 NPE（真机复现）。
+            HomePageAdapter adapter = pageAdapter;
             pageAdapter = null;
+            try {
+                mViewPager.setAdapter(null);
+                adapter.removeAll();
+            } catch (Throwable ignored) {
+            }
         } else if (!fragments.isEmpty()) {
             fragments.clear();
         }

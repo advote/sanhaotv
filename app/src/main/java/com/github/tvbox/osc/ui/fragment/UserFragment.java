@@ -167,7 +167,10 @@ public class UserFragment extends BaseLazyFragment implements View.OnClickListen
         tvSetting = findViewById(R.id.tvSetting);
         tvOtherConfig = findViewById(R.id.tvOtherConfig);
         tvTransfer = findViewById(R.id.tvTransfer);
-        tvTransfer.setVisibility(ScreenUtils.isTv(mContext) ? View.VISIBLE : View.GONE);
+        // 三好TV：移除“传输”按钮（原版手机推送功能入口），所有设备均不再显示
+        tvTransfer.setVisibility(View.GONE);
+        tvTransfer.setOnClickListener(null);
+        tvTransfer.setOnFocusChangeListener(null);
         tvCollect = findViewById(R.id.tvFavorite);
         tvHistory = findViewById(R.id.tvHistory);
         tvPush = findViewById(R.id.tvPush);
