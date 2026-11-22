@@ -31,13 +31,17 @@ public final class ToastWatcher {
     private static volatile boolean sInstalled;
 
     /**
-     * 三好TV：需要屏蔽的 Toast 关键词。
+     * 三好TV：需要拦截改写的 Toast 关键词。
      * 第三方 spider 接口包（加固 jar）在接口加载时会弹“本接口免费分享”这类
-     * 原作者宣示文案，与用户无关，命中关键词的 Toast 直接吞掉不显示。
+     * 原作者宣示文案，与用户无关。命中关键词的 Toast 会被改写为
+     * REPLACEMENT_TEXT 后再显示；改写失败则直接吞掉。
      */
     private static final String[] BLOCK_KEYWORDS = {
-            "免费分享", "仅供学习", "仅供测试", "禁止倒卖", "请勿商用"
+            "免费分享", "仅供学习", "仅供测试", "禁止倒卖", "请勿商用", "本接口", "接口免费"
     };
+
+    /** 三好TV：命中宣示文案后展示的替换文案（改为空字符串则完全屏蔽）。 */
+    public static final String REPLACEMENT_TEXT = "欢迎使用三好TV";
 
     public static void setListener(Listener l) {
         if (l != null && !sListeners.contains(l)) sListeners.add(l);
@@ -75,14 +79,19 @@ public final class ToastWatcher {
                             if (method.getName().startsWith("enqueueToast")) {
                                 CharSequence text = extractText(args);
                                 if (text != null) {
-                                    // 屏蔽名单：第三方接口的宣示文案直接吞掉，不转发给系统
                                     if (shouldBlock(text)) {
-                                        return null;
-                                    }
-                                    for (Listener l : sListeners) {
-                                        try {
-                                            l.onToast(text);
-                                        } catch (Throwable ignored) {
+                                        // 三好TV：命中宣示文案 —— 先尝试把 Toast 文本原地改写为
+                                        // 替换文案（直接改 TN 里的字段，再照常转发给系统）。
+                                        // 改写失败则返回 null 吞掉该 Toast，绝不显示原文案。
+                                        if (!rewriteToastText(args)) {
+                                            return null;
+                                        }
+                                    } else {
+                                        for (Listener l : sListeners) {
+                                            try {
+                                                l.onToast(text);
+                                            } catch (Throwable ignored) {
+                                            }
                                         }
                                     }
                                 }
@@ -107,6 +116,48 @@ public final class ToastWatcher {
             if (t.contains(k)) return true;
         }
         return false;
+    }
+
+    /**
+     * 三好TV：把 Toast 参数对象里的文本原地改写为替换文案。
+     * 优先改 TN（TransientNotification）的 mText 字段；若文本在 mNextView 的
+     * TextView 里则调用其 setText。返回是否至少改写了一处。
+     */
+    private static boolean rewriteToastText(Object[] args) {
+        if (args == null) return false;
+        boolean changed = false;
+        for (Object a : args) {
+            if (a == null) continue;
+            String cn = a.getClass().getName();
+            if (cn.contains("TransientNotification") || cn.contains("TN")) {
+                try {
+                    Field mf = findField(a.getClass(), "mText");
+                    if (mf != null) {
+                        mf.setAccessible(true);
+                        mf.set(a, REPLACEMENT_TEXT);
+                        changed = true;
+                    }
+                } catch (Throwable ignored) {
+                }
+                try {
+                    Field vf = findField(a.getClass(), "mNextView");
+                    if (vf != null) {
+                        vf.setAccessible(true);
+                        Object view = vf.get(a);
+                        if (view instanceof android.view.ViewGroup) {
+                            ((android.view.ViewGroup) view).removeAllViews();
+                            android.widget.TextView tv = new android.widget.TextView(((android.view.View) view).getContext());
+                            tv.setText(REPLACEMENT_TEXT);
+                            tv.setTextColor(0xFFFFFFFF);
+                            ((android.view.ViewGroup) view).addView(tv);
+                            changed = true;
+                        }
+                    }
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+        return changed;
     }
 
     /** 从 enqueueToast 参数里取出 Toast 文本。 */
