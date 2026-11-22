@@ -49,6 +49,31 @@ public class JarLoader {
         return success;
     }
 
+    /**
+     * 三好TV：把 APK assets 内置的 spider jar 复制为本地缓存，并以主 jar（MAIN_KEY）加载。
+     * 用于点播源 video_source.json 的 spider 字段为空时兜底——内置 jar 是完整主 jar 副本，
+     * 包含全部 spider 类，保证所有站点正常加载，同时彻底不依赖云端 spider 字段。
+     *
+     * @param assetPath assets 内的相对路径，例如 spider/config_center_spider.jar
+     * @param cacheName 复制到 cache/jar 目录下的文件名
+     * @return 加载成功返回 true
+     */
+    public boolean loadBuiltInAssetJar(String assetPath, String cacheName) {
+        try {
+            File target = new File(jarDir(), cacheName);
+            if (!exists(target)) {
+                target = copyAsset("assets://" + assetPath, target);
+            }
+            if (!exists(target)) return false;
+            boolean ok = load(target.getAbsolutePath());
+            if (ok) recent = MAIN_KEY;
+            return ok;
+        } catch (Throwable e) {
+            Log.i(TAG, "loadBuiltInAssetJar error=" + e.getMessage());
+            return false;
+        }
+    }
+
     public void setRecentJarKey(String key) {
         if (TextUtils.isEmpty(key)) return;
         recent = realKey(key);

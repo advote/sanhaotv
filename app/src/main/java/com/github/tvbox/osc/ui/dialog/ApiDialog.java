@@ -2,6 +2,7 @@ package com.github.tvbox.osc.ui.dialog;
 
 import android.app.Activity;
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
@@ -50,8 +51,8 @@ public class ApiDialog extends BaseDialog {
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void refresh(RefreshEvent event) {
         if (event.type == RefreshEvent.TYPE_API_URL_CHANGE) {
+            // 点播源变化只更新点播输入框，直播地址必须用 live_source.txt，不能被点播地址覆盖
             inputApi.setText((String) event.obj);
-            inputApiLive.setText((String) event.obj);
         } else if (event.type == RefreshEvent.TYPE_LIVE_API_URL_CHANGE) {
             inputApiLive.setText((String) event.obj);
         }
@@ -66,9 +67,9 @@ public class ApiDialog extends BaseDialog {
         inputApi = findViewById(R.id.input);
         inputApiLive = findViewById(R.id.inputLive);
         inputConfirm = findViewById(R.id.inputConfirm);
-        //内置网络接口在此处添加
-        inputApi.setText(Hawk.get(HawkConfig.API_URL, ""));
-        inputApiLive.setText(Hawk.get(HawkConfig.LIVE_API_URL, Hawk.get(HawkConfig.API_URL)));
+        //内置网络接口在此处添加：首次安装即显示 GitHub 上的 video_source.json / live_source.txt
+        inputApi.setText(HistoryHelper.getVideoApi());
+        inputApiLive.setText(HistoryHelper.getLiveApi());
         findViewById(R.id.inputSubmit).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -91,7 +92,7 @@ public class ApiDialog extends BaseDialog {
         findViewById(R.id.vodHistory).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                ArrayList<String> history = Hawk.get(HawkConfig.API_HISTORY, new ArrayList<String>());
+                ArrayList<String> history = HistoryHelper.ensureApiHistory(HawkConfig.API_HISTORY, HistoryHelper.DEFAULT_VIDEO_API);
                 if (history.isEmpty()) {
                     Toast.makeText(getContext(), "点播历史为空", Toast.LENGTH_SHORT).show();
                     return;
@@ -104,13 +105,16 @@ public class ApiDialog extends BaseDialog {
                 dialog.setAdapter(new ApiHistoryDialogAdapter.SelectDialogInterface() {
                     @Override
                     public void click(String value) {
-                        inputApi.setText(value);
-                        Hawk.put(HawkConfig.API_URL, value);
                         dialog.dismiss();
+                        // 立即应用该历史地址并触发重新加载
+                        applyHistoryAddress(value, false);
                     }
 
                     @Override
                     public void del(String value, ArrayList<String> data) {
+                        // 保险：删除后仍确保初始地址置顶
+                        data.remove(HistoryHelper.DEFAULT_VIDEO_API);
+                        data.add(0, HistoryHelper.DEFAULT_VIDEO_API);
                         Hawk.put(HawkConfig.API_HISTORY, data);
                     }
                 }, history, idx);
@@ -120,7 +124,7 @@ public class ApiDialog extends BaseDialog {
         findViewById(R.id.apiHistory).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                ArrayList<String> history = Hawk.get(HawkConfig.LIVE_API_HISTORY, new ArrayList<String>());
+                ArrayList<String> history = HistoryHelper.ensureApiHistory(HawkConfig.LIVE_API_HISTORY, HistoryHelper.DEFAULT_LIVE_API);
                 if (history.isEmpty()){
                     Toast.makeText(getContext(), "直播历史为空", Toast.LENGTH_SHORT).show();
                     return;
@@ -134,13 +138,16 @@ public class ApiDialog extends BaseDialog {
                 dialog.setAdapter(new ApiHistoryDialogAdapter.SelectDialogInterface() {
                     @Override
                     public void click(String value) {
-                        inputApiLive.setText(value);
-                        Hawk.put(HawkConfig.LIVE_API_URL, value);
                         dialog.dismiss();
+                        // 立即应用该历史地址并触发重新加载
+                        applyHistoryAddress(value, true);
                     }
 
                     @Override
                     public void del(String value, ArrayList<String> data) {
+                        // 保险：删除后仍确保初始地址置顶
+                        data.remove(HistoryHelper.DEFAULT_LIVE_API);
+                        data.add(0, HistoryHelper.DEFAULT_LIVE_API);
                         Hawk.put(HawkConfig.LIVE_API_HISTORY, data);
                     }
                 }, history, idx);
@@ -215,26 +222,72 @@ public class ApiDialog extends BaseDialog {
     }
 
     private void refreshQRCode() {
-        String address = ControlManager.get().getAddress(false);
-        tvAddress.setText(String.format("手机/电脑扫描上方二维码或者直接浏览器访问地址\n%s", address));
-        ivQRCode.setImageBitmap(QRCodeGen.generateBitmap(address+"api.html", AutoSizeUtils.mm2px(getContext(), 300), AutoSizeUtils.mm2px(getContext(), 300)));
+        try {
+            String address = ControlManager.get().getAddress(false);
+            if (address == null) address = "";
+            tvAddress.setText(String.format("手机/电脑扫描上方二维码或者直接浏览器访问地址\n%s", address));
+            int size = AutoSizeUtils.mm2px(getContext(), 300);
+            if (size <= 0) size = 300;
+            Bitmap bmp = QRCodeGen.generateBitmap(address + "api.html", size, size);
+            if (bmp != null && ivQRCode != null) {
+                ivQRCode.setImageBitmap(bmp);
+            }
+        } catch (Throwable t) {
+            // 二维码生成失败不应导致配置弹窗/应用崩溃
+            if (tvAddress != null) {
+                tvAddress.setText("扫码配置暂不可用，请直接在下方输入框填写接口地址");
+            }
+        }
     }
 
     private void saveAndDismiss() {
+        String oldVideo = Hawk.get(HawkConfig.API_URL, "");
         String newApi = inputApi.getText().toString().trim();
         String newLiveApi = inputApiLive.getText().toString().trim();
-        if (!newApi.isEmpty()) {
-            HistoryHelper.setApiHistory(newApi);
-            if (!newApi.equals(Hawk.get(HawkConfig.API_URL, newApi))) {
-                inputApiLive.setText(newApi);
-                newLiveApi = newApi;
-            }
+        // 空值回退到 GitHub 默认地址，避免再次保存后出现空地址
+        if (newApi.isEmpty()) newApi = HistoryHelper.DEFAULT_VIDEO_API;
+        if (newLiveApi.isEmpty()) newLiveApi = HistoryHelper.DEFAULT_LIVE_API;
+        inputApi.setText(newApi);
+        inputApiLive.setText(newLiveApi);
+        HistoryHelper.setApiHistory(newApi);
+        HistoryHelper.setLiveApiHistory(newLiveApi);
+        boolean videoChanged = !newApi.equals(oldVideo == null ? "" : oldVideo);
+        if (listener == null) {
+            Hawk.put(HawkConfig.API_URL, newApi);
+            Hawk.put(HawkConfig.LIVE_API_URL, newLiveApi);
+        } else if (videoChanged) {
+            // 点播地址变了：onchange 会写点播地址并重启，直播地址已单独写入
+            Hawk.put(HawkConfig.LIVE_API_URL, newLiveApi);
+            listener.onchange(newApi);
+        } else {
+            // 只有直播地址变化：用专用回调立即生效，避免点播地址相同导致不重启
+            listener.onLiveChange(newLiveApi);
         }
-        if (!newLiveApi.isEmpty()) {
-            HistoryHelper.setLiveApiHistory(newLiveApi);
+        dismiss();
+    }
+
+    /**
+     * 三好TV：点击历史记录后立即把该地址应用为当前生效源。
+     * 之前仅 setText + Hawk.put 并关闭子弹窗，未触发 onchange/重启，导致点了不生效。
+     *
+     * @param value 历史中的地址
+     * @param live  true=直播地址，false=点播地址
+     */
+    private void applyHistoryAddress(String value, boolean live) {
+        if (value == null || value.trim().isEmpty()) return;
+        value = value.trim();
+        if (live) {
+            // 直播：写入 LIVE_API_URL + 历史，并用专用回调立即生效
+            inputApiLive.setText(value);
+            Hawk.put(HawkConfig.LIVE_API_URL, value);
+            HistoryHelper.setLiveApiHistory(value);
+            if (listener != null) listener.onLiveChange(value);
+        } else {
+            // 点播：设置输入框 + 历史，onchange 会写入 API_URL 并重启加载
+            inputApi.setText(value);
+            HistoryHelper.setApiHistory(value);
+            if (listener != null) listener.onchange(value);
         }
-        Hawk.put(HawkConfig.LIVE_API_URL, newLiveApi);
-        if (listener != null) listener.onchange(newApi);
         dismiss();
     }
 
@@ -254,6 +307,8 @@ public class ApiDialog extends BaseDialog {
 
     public interface OnListener {
         void onchange(String api);
+
+        void onLiveChange(String live);
 
         void onLocalConfig(boolean live);
     }

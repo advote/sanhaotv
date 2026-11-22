@@ -47,6 +47,7 @@ import com.orhanobut.hawk.Hawk;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -54,6 +55,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -89,6 +91,37 @@ public class ApiConfig {
     private String danmaku = "";
 
     private final SourceBean emptyHome = new SourceBean();
+
+    /**
+     * 三好TV：配置中心已从 video_source.json 数据源列表中移出，改为软件内置的固定功能项。
+     * 该 SourceBean 不加入 sourceBeanList，因此不会出现在首页数据源切换弹窗、搜索源列表、
+     * 设置页站点列表中，仅通过「其他配置」入口调用 openConfigCenter() 时单独使用。
+     * spider 仍为 csp_PanConfigGuard，与网盘配置中心页面保持一致。
+     */
+    private final SourceBean builtInConfigCenter = createBuiltInConfigCenter();
+
+    private static SourceBean createBuiltInConfigCenter() {
+        SourceBean sb = new SourceBean();
+        sb.setKey("Wexconfig");
+        sb.setName("配置中心");
+        sb.setType(3);
+        sb.setApi("csp_PanConfigGuard");
+        sb.setSearchable(0);
+        sb.setQuickSearch(0);
+        sb.setChangeable(0);
+        sb.setFilterable(0);
+        sb.setStyle("{\"type\":\"list\"}");
+        // 三好TV：配置中心不再指定独立 jar，直接使用主 jar。
+        // 主 jar 由点播源 spider 字段或 APK 内置 jar 提供，两者都包含 PanConfigGuard，
+        // 且都是完整副本，因此配置中心内容不受 video_source.json 具体字段变化影响。
+        // 不指定独立 jar 也避免加固 jar 被重复加载导致的 native so 冲突。
+        return sb;
+    }
+
+    /** 获取内置配置中心站点（固定项，不随云端数据源列表变化）。 */
+    public SourceBean getBuiltInConfigCenter() {
+        return builtInConfigCenter;
+    }
 
     private final JarLoader jarLoader = new JarLoader();
     private final JsLoader jsLoader = new JsLoader();
@@ -396,6 +429,24 @@ public class ApiConfig {
                 } finally {
                     if (response != null) closeQuietly(response.body());
                 }
+                // 三好TV：网络拉取失败时，默认源使用 APK 内置 assets 兜底。
+                // 仅对 GitHub 默认源生效，用户手动设置的第三方源仍走原有失败提示，
+                // 避免把三好TV内置内容错配到用户的自定义地址上。
+                if (!TextUtils.isEmpty(error) && isBuiltInSource(apiUrl)) {
+                    String asset = HistoryHelper.DEFAULT_VIDEO_API.equals(normalizeSource(apiUrl))
+                            ? "video_source.json" : "live_source.txt";
+                    String builtIn = readAssetContent(asset);
+                    if (!TextUtils.isEmpty(builtIn)) {
+                        try {
+                            result = FindResult(builtIn, configKey);
+                            result = fixContentPath(apiUrl, result);
+                            error = "";
+                            LOG.i("SanHaoTV use built-in asset fallback: " + asset);
+                        } catch (Throwable t) {
+                            LOG.e("SanHaoTV built-in asset parse failed: " + t.getMessage());
+                        }
+                    }
+                }
                 final String finalResult = result;
                 final String finalError = error;
                 mainHandler.post(new Runnable() {
@@ -410,6 +461,38 @@ public class ApiConfig {
                 });
             }
         });
+    }
+
+    /** 归一化源地址：去首尾空白与末尾斜杠，便于与内置默认地址比较。 */
+    private static String normalizeSource(String url) {
+        if (url == null) return "";
+        String t = url.trim();
+        while (t.endsWith("/")) t = t.substring(0, t.length() - 1);
+        return t;
+    }
+
+    /** 判断当前地址是否为两个 GitHub 默认源之一（仅这类源可用内置 assets 兜底）。 */
+    private static boolean isBuiltInSource(String apiUrl) {
+        String t = normalizeSource(apiUrl);
+        return HistoryHelper.DEFAULT_VIDEO_API.equals(t) || HistoryHelper.DEFAULT_LIVE_API.equals(t);
+    }
+
+    /** 读取 APK assets 中的内置源文件内容（UTF-8）；不存在或异常时返回 null。 */
+    private static String readAssetContent(String fileName) {
+        InputStream is = null;
+        try {
+            is = App.getInstance().getAssets().open(fileName);
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int len;
+            while ((len = is.read(buf)) != -1) bos.write(buf, 0, len);
+            return new String(bos.toByteArray(), StandardCharsets.UTF_8);
+        } catch (Throwable t) {
+            LOG.e("SanHaoTV read asset " + fileName + " failed: " + t.getMessage());
+            return null;
+        } finally {
+            if (is != null) try { is.close(); } catch (Throwable ignored) {}
+        }
     }
 
     private void loadJarAsync(File file, JarLoadCallback callback) {
@@ -529,8 +612,9 @@ public class ApiConfig {
         String md5 = urls.length > 1 ? urls[1].trim() : "";
         File cache = new File(App.getInstance().getFilesDir().getAbsolutePath() + "/csp/"+MD5.string2MD5(jarUrl)+".jar");
 
-        if (!md5.isEmpty() || useCache) {
-            if (cache.exists() && (useCache || MD5.getFileMd5(cache).equalsIgnoreCase(md5))) {
+        if (!md5.isEmpty()) {
+            // 有 md5 时始终按 md5 校验，缓存过期就重下，避免蜘蛛更新后仍用旧 jar
+            if (cache.exists() && MD5.getFileMd5(cache).equalsIgnoreCase(md5)) {
                 if (cache.exists()) {
                     loadJarAsync(cache, new JarLoadCallback() {
                         @Override
@@ -779,8 +863,21 @@ public class ApiConfig {
             if (firstSite == null) firstSite = sb;
             sourceBeanList.put(siteKey, sb);
         }
+        // 三好TV：配置中心已从 video_source.json 移除，作为软件固定项内置。
+        // 这里把它注册进 sourceBeanList，使 getSource("Wexconfig") 等加载路径能正常找到它
+        // （spider 的 homeContent 分类、综合设置/网盘 tab 才能加载出来）；
+        // 展示层通过 getSwitchSourceBeanList() 过滤，不会出现在数据源切换弹窗和设置页站源列表。
+        if (builtInConfigCenter != null && !sourceBeanList.containsKey(builtInConfigCenter.getKey())) {
+            sourceBeanList.put(builtInConfigCenter.getKey(), builtInConfigCenter);
+        }
         if (sourceBeanList != null && sourceBeanList.size() > 0) {
             String home = Hawk.get(HawkConfig.HOME_API, "");
+            // 三好TV：配置中心是通过「其他配置」临时进入的固定项，不是合法的启动首页。
+            // 若上次退出前停留在配置中心（HOME_API=Wexconfig），启动时忽略它，
+            // 回退到第一个正常点播站点，避免重新打开又定位在配置中心。
+            if (builtInConfigCenter != null && builtInConfigCenter.getKey().equalsIgnoreCase(home)) {
+                home = "";
+            }
             SourceBean sh = getSource(home);
             if (sh == null) {
                 assert firstSite != null;
@@ -1447,6 +1544,11 @@ public class ApiConfig {
         return spider;
     }
 
+    /** 三好TV：点播源 spider 字段为空时，用 APK 内置的完整 spider jar 作为主 jar 加载。 */
+    public boolean loadBuiltInSpiderJar() {
+        return jarLoader.loadBuiltInAssetJar("spider/config_center_spider.jar", "sanhao_builtin_spider.jar");
+    }
+
     public String getDanmaku() {
         return danmaku == null ? "" : danmaku;
     }
@@ -1660,6 +1762,14 @@ public class ApiConfig {
         Hawk.put(HawkConfig.HOME_API, sourceBean.getKey());
     }
 
+    /**
+     * 三好TV：临时切换首页数据源但不持久化到 HOME_API。
+     * 用于「其他配置」进入配置中心这种临时场景，避免下次启动又定位到配置中心。
+     */
+    public void setSourceBeanTransient(SourceBean sourceBean) {
+        this.mHomeSource = sourceBean;
+    }
+
     public void setDefaultParse(ParseBean parseBean) {
         if (this.mDefaultParse != null)
             this.mDefaultParse.setDefault(false);
@@ -1673,11 +1783,25 @@ public class ApiConfig {
     }
 
     public List<SourceBean> getSourceBeanList() {
-        return new ArrayList<>(sourceBeanList.values());
+        // 三好TV：配置中心是软件固定项，不参与全局搜索等站点列表
+        List<SourceBean> list = new ArrayList<>();
+        for (SourceBean bean : sourceBeanList.values()) {
+            if (bean != null && builtInConfigCenter != null
+                    && builtInConfigCenter.getKey().equalsIgnoreCase(bean.getKey())) {
+                continue;
+            }
+            list.add(bean);
+        }
+        return list;
     }
     public List<SourceBean> getSwitchSourceBeanList() {
         List<SourceBean> filteredList = new ArrayList<>();
         for (SourceBean bean : sourceBeanList.values()) {
+            // 三好TV：配置中心是软件固定项，仅通过「其他配置」进入，不出现在数据源切换列表
+            if (bean != null && builtInConfigCenter != null
+                    && builtInConfigCenter.getKey().equalsIgnoreCase(bean.getKey())) {
+                continue;
+            }
             filteredList.add(bean);
         }
         return filteredList;
@@ -1801,5 +1925,20 @@ public class ApiConfig {
         currentLivePyKey = "";
         currentLiveSpider = "";
         clearLoader();
+    }
+
+    /**
+     * 三好TV：云端直播源内容更新后清空内存缓存，
+     * 使下次进入直播页时 shouldReloadLiveConfig() 返回 true，
+     * 从而重新读取已被覆盖的本地缓存文件。
+     */
+    public void clearLiveCache() {
+        try {
+            liveChannelGroupList.clear();
+            loadedLiveConfigUrl = "";
+            LOG.i("ApiConfig.clearLiveCache done");
+        } catch (Throwable t) {
+            LOG.e("ApiConfig.clearLiveCache err: " + t.getMessage());
+        }
     }
 }

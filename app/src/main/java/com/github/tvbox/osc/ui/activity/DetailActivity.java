@@ -170,10 +170,22 @@ public class DetailActivity extends BaseActivity {
 
     @Override
     protected void init() {
-        EventBus.getDefault().register(this);
-        initView();
-        initViewModel();
-        initData();
+        try {
+            EventBus.getDefault().register(this);
+            initView();
+            initViewModel();
+            initData();
+        } catch (Throwable t) {
+            // 三好TV：详情页初始化异常时不再让整个应用崩溃，
+            // 记录堆栈并友好提示后自动返回首页
+            if (t.getMessage() != null) {
+                try {
+                    Toast.makeText(this, "详情加载异常：" + t.getMessage(), Toast.LENGTH_SHORT).show();
+                } catch (Throwable ignored) {}
+            }
+            t.printStackTrace();
+            finish();
+        }
     }
 
     private void initView() {

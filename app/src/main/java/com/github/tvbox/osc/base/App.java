@@ -41,8 +41,10 @@ public class App extends MultiDexApplication {
     public void onCreate() {
         super.onCreate();
         instance = this;
+        CrashHandler.init(this); // 三好TV：全局崩溃捕获，便于定位问题
+        com.github.tvbox.osc.util.ToastWatcher.install(this); // 三好TV：监听系统 Toast，用于网盘扫码“登录成功”后即时刷新状态
         initParams();
-        RemoteSourceHelper.syncOnStartup(); // 三好TV：本地源失效时自动从 GitHub 拉取
+        RemoteSourceHelper.syncOnStartup(); // 三好TV：轻量检测 GitHub 源是否有更新，有更新才触发重新拉取
         // OKGo
         OkGoHelper.init(); //台标获取
         EpgUtil.init();
@@ -73,6 +75,15 @@ public class App extends MultiDexApplication {
         } else if (Hawk.get(HawkConfig.PLAY_TYPE, 2) == 0) {
             Hawk.put(HawkConfig.PLAY_TYPE, 2);
         }
+        // 三好TV：首次启动/地址被清空时，立即写入 GitHub 默认源，避免配置弹窗显示空白
+        com.github.tvbox.osc.util.HistoryHelper.ensureDefaultSources();
+        // 三好TV：确保初始地址永久存在于配置历史第一条（兼容老用户升级）
+        com.github.tvbox.osc.util.HistoryHelper.ensureApiHistory(
+                com.github.tvbox.osc.util.HawkConfig.API_HISTORY,
+                com.github.tvbox.osc.util.HistoryHelper.DEFAULT_VIDEO_API);
+        com.github.tvbox.osc.util.HistoryHelper.ensureApiHistory(
+                com.github.tvbox.osc.util.HawkConfig.LIVE_API_HISTORY,
+                com.github.tvbox.osc.util.HistoryHelper.DEFAULT_LIVE_API);
     }
 
     public static App getInstance() {

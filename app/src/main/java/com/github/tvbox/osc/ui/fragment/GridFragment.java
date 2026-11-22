@@ -251,6 +251,12 @@ public class GridFragment extends BaseLazyFragment {
                 FastClickCheckUtil.check(view);
                 Movie.Video video = gridAdapter.getData().get(position);
                 if (video != null) {
+                    // 三好TV：点击“未扫码”授权卡片后，启动静默轮询重新请求当前分类，
+                    // 直接用 spider 返回的真实状态刷新文案（与“退出再进”走同一路径）。
+                    // 触发放在最前面，即使该卡片没有 action 也能生效。
+                    if (video.note != null && video.note.contains("未扫码")) {
+                        startSilentAuthReload();
+                    }
                     if (video.action != null) {
                         sourceViewModel.action(video.sourceKey, video.action);
                         return;
@@ -391,6 +397,13 @@ public class GridFragment extends BaseLazyFragment {
             @Override
             public void onChanged(AbsXml absXml) {
                 isRequesting = false;
+                // 三好TV：扫码后的静默重拉回包 —— 只更新授权卡片的真实状态文案，
+                // 不 showLoading、不 scrollTop、不动 adapter 数据集与焦点。
+                if (silentAuthReloading) {
+                    silentAuthReloading = false;
+                    handleSilentAuthResult(absXml);
+                    return;
+                }
                 if (absXml != null && absXml.movie != null && absXml.movie.videoList != null && absXml.movie.videoList.size() > 0) {
                     if (page == 1) {
                         showSuccess();
@@ -430,7 +443,6 @@ public class GridFragment extends BaseLazyFragment {
                 String msg = jsonObject.optString("msg");
                 if (!msg.isEmpty()) {
                     Toast.makeText(getContext(), msg, Toast.LENGTH_SHORT).show();
-                    forceRefresh();
                 }
             }
         });
@@ -444,7 +456,38 @@ public class GridFragment extends BaseLazyFragment {
         return !isRequesting && mGrids.empty() && (hasActionItems || !isLoad);
     }
 
+    /**
+     * 三好TV：判断是否为“配置中心”的“主页”分类。
+     * 配置中心（key=Wexconfig）的“主页”分类返回的都是无关的推荐电影海报，
+     * 进入时该 tab 内容需要留空；而“综合设置 / 各网盘”分类里的设置项必须正常加载。
+     */
+    private boolean isConfigCenterHome() {
+        try {
+            if (!"Wexconfig".equalsIgnoreCase(ApiConfig.get().getHomeSourceBean().getKey())) return false;
+            if (sortData == null || sortData.name == null) return false;
+            String n = sortData.name.trim();
+            return "主页".equals(n) || "首页".equals(n);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     private void initData() {
+        // 三好TV：任何正常加载（切 tab / 刷新 / 进文件夹）都先停止扫码静默轮询，
+        // 避免其回包与正常回包串扰。静默重拉本身直接调 getList，不经过这里。
+        stopSilentAuthReload();
+        // 三好TV：只把配置中心“主页”tab 的内容留空（去掉推荐电影海报）；
+        // 综合设置、各网盘分类的设置项照常加载。点“主页”tab 切回点播首页由 HomeActivity 处理。
+        if (isConfigCenterHome()) {
+            try {
+                if (gridAdapter != null) gridAdapter.setNewData(new ArrayList<>());
+                showSuccess();
+            } catch (Throwable ignored) {
+            }
+            isRequesting = false;
+            isLoad = false;
+            return;
+        }
         showLoading();
         isRequesting = true;
         isLoad = false;
@@ -556,5 +599,102 @@ public class GridFragment extends BaseLazyFragment {
         if (isRequesting) return;
         page = 1;
         initData();
+    }
+
+    // ===== 三好TV：扫码后静默重拉真实状态 =====
+    // 关键事实：扫码其实已经成功 —— 退出配置中心再进入即可看到“已登录”，
+    // 说明 spider 内部已保存登录态，只是当前页面没有重新请求数据。
+    // 因此不再抓 Toast / Cookie / 强改文案，而是：点击“未扫码”卡片后，
+    // 每隔一小段时间静默重新请求当前分类（不闪 loading、不动焦点），
+    // 直接用 spider 返回的真实数据刷新卡片，直到数据中不再有“未扫码”为止。
+    private final android.os.Handler authHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private boolean silentAuthReloading = false;   // 当前回包是否为静默重拉
+    private int authReloadTicks = 0;               // 已重拉次数
+    private static final int AUTH_RELOAD_INTERVAL_MS = 1500; // 重拉间隔
+    private static final int AUTH_RELOAD_MAX_TICKS = 40;     // 最多约 60 秒
+
+    private final Runnable authReloadRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (!isAdded() || getActivity() == null || sortData == null || sourceViewModel == null) return;
+            authReloadTicks++;
+            silentAuthReloading = true;
+            // 重新请求当前分类第一页，走 spider 的真实逻辑（与“退出再进”同一路径）
+            sourceViewModel.getList(sortData, 1);
+        }
+    };
+
+    /** 点击“未扫码”授权卡片后调用：开始静默重拉真实状态。 */
+    private void startSilentAuthReload() {
+        if (sortData == null || sourceViewModel == null) return;
+        authHandler.removeCallbacks(authReloadRunnable);
+        authReloadTicks = 0;
+        silentAuthReloading = false;
+        authHandler.postDelayed(authReloadRunnable, AUTH_RELOAD_INTERVAL_MS);
+    }
+
+    /** 停止静默重拉（切 tab / 手动刷新 / 销毁时调用）。 */
+    private void stopSilentAuthReload() {
+        authHandler.removeCallbacks(authReloadRunnable);
+        silentAuthReloading = false;
+        authReloadTicks = 0;
+    }
+
+    /**
+     * 处理静默重拉回包：用 spider 返回的真实数据更新“未扫码”卡片文案。
+     * 若回包中已无“未扫码”（登录已生效）则停止轮询，否则继续重拉。
+     */
+    private void handleSilentAuthResult(AbsXml absXml) {
+        boolean stillUnscanned = false;
+        boolean hasData = absXml != null && absXml.movie != null
+                && absXml.movie.videoList != null && !absXml.movie.videoList.isEmpty();
+        List<Movie.Video> current = gridAdapter == null ? null : gridAdapter.getData();
+
+        if (hasData) {
+            List<Movie.Video> fresh = absXml.movie.videoList;
+            for (Movie.Video f : fresh) {
+                if (f != null && f.note != null && f.note.contains("未扫码")) {
+                    stillUnscanned = true;
+                    break;
+                }
+            }
+            if (!stillUnscanned) {
+                // spider 已认定登录成功：先把能按 id/name 匹配的卡片同步为真实文案，
+                // 再兜底把剩余仍显示“未扫码”的卡片统一改为“已登录”。
+                for (Movie.Video f : fresh) {
+                    if (f == null || f.note == null || current == null) continue;
+                    for (Movie.Video c : current) {
+                        if (c == null) continue;
+                        boolean same = (f.id != null && f.id.equals(c.id))
+                                || (f.name != null && f.name.equals(c.name));
+                        if (same) c.note = f.note;
+                    }
+                }
+                if (current != null) {
+                    for (Movie.Video c : current) {
+                        if (c != null && c.note != null && c.note.contains("未扫码")) {
+                            c.note = "已登录";
+                        }
+                    }
+                }
+                if (gridAdapter != null) gridAdapter.notifyDataSetChanged();
+            }
+        }
+
+        if ((!hasData || stillUnscanned) && authReloadTicks < AUTH_RELOAD_MAX_TICKS && isAdded()) {
+            authHandler.postDelayed(authReloadRunnable, AUTH_RELOAD_INTERVAL_MS);
+        } else {
+            stopSilentAuthReload();
+        }
+    }
+
+    /** 兼容旧调用：进入配置中心时无需再清理临时标记（保留空实现）。 */
+    public static void clearLoggedInSources() {
+    }
+
+    @Override
+    public void onDestroyView() {
+        stopSilentAuthReload();
+        super.onDestroyView();
     }
 }

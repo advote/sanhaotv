@@ -1,13 +1,20 @@
 package com.github.tvbox.osc.util;
 
+import android.content.Context;
 import android.text.TextUtils;
 
+import com.github.tvbox.osc.api.ApiConfig;
+import com.github.tvbox.osc.base.App;
 import com.orhanobut.hawk.Hawk;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -24,17 +31,20 @@ import java.util.concurrent.Executors;
  *   <li>应用启动时校验本地缓存的「视频源 / 直播源」地址是否仍然可用；</li>
  *   <li>若本地地址为空或网络请求失败（失效），自动从 GitHub 托管的
  *       sources.json 拉取最新源地址并写回本地；</li>
- *   <li>用户手动设置的源拥有最高优先级：只要本地地址可访问，就绝不被云端覆盖。</li>
+ *   <li><b>内容更新检测</b>：若云端 sources.json 里的 video_version / live_version
+ *       高于本地记录，则下载最新源内容覆盖本地缓存文件，使 App 无需重装即可用上新源；</li>
+ *   <li>用户手动设置的源拥有最高优先级：只要本地地址与云端源不同，就绝不覆盖。</li>
  * </ul>
  *
  * <p>云端配置格式（sources.json）：</p>
  * <pre>
  * {
- *   "video": "https://raw.githubusercontent.com/用户名/sanhaotv/main/video_source.json",
- *   "live":  "https://raw.githubusercontent.com/用户名/sanhaotv/main/live_source.txt"
+ *   "video": ".../video_source.json",
+ *   "live":  ".../live_source.txt",
+ *   "video_version": 2026112001,
+ *   "live_version":  2026112001
  * }
  * </pre>
- * 也支持 urls 数组的多线路形式，取第一条可用线路。
  */
 public final class RemoteSourceHelper {
 
@@ -50,8 +60,16 @@ public final class RemoteSourceHelper {
     /** 记录云端源是否已被应用过一次，避免每次启动重复探测网络。 */
     public static final String KEY_LAST_CLOUD_SYNC = "sanhao_last_cloud_sync";
 
-    private static final int CONNECT_TIMEOUT_MS = 6000;
-    private static final int READ_TIMEOUT_MS = 6000;
+    /** 本地已应用的云端内容版本号。 */
+    public static final String KEY_VIDEO_VERSION = "sanhao_video_version";
+    public static final String KEY_LIVE_VERSION = "sanhao_live_version";
+
+    /** 远端文件轻量指纹：ETag + Last-Modified + Content-Length，用于判断是否需要重新下载。 */
+    public static final String KEY_VIDEO_REMOTE_META = "sanhao_video_remote_meta";
+    public static final String KEY_LIVE_REMOTE_META = "sanhao_live_remote_meta";
+
+    private static final int CONNECT_TIMEOUT_MS = 8000;
+    private static final int READ_TIMEOUT_MS = 15000;
 
     private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
 
@@ -59,103 +77,262 @@ public final class RemoteSourceHelper {
 
     /**
      * 在 App 启动时调用（异步，不阻塞 UI）。
+     *
+     * <p>2026-11-21 优化：不再每次启动都 GET 直播/点播源全文。
+     * 启动流程只做两件轻量操作：</p>
+     * <ol>
+     *   <li>读取很小的 sources.json，必要时恢复空的源地址；</li>
+     *   <li>对 live_source.txt / video_source.json 发 HEAD 请求，仅取 ETag / Last-Modified /
+     *       Content-Length 与本地记录比对；只有确认远端文件变化时才删除旧缓存，
+     *       让 TVBox 原生流程重新下载一次。</li>
+     * </ol>
      */
     public static void syncOnStartup() {
         EXECUTOR.execute(new Runnable() {
             @Override
             public void run() {
                 try {
-                    doSync();
+                    checkForUpdates();
                 } catch (Throwable t) {
-                    LOG.e(TAG + " sync failed: " + t.getMessage());
+                    LOG.e(TAG + " update check failed: " + t.getMessage());
                 }
             }
         });
     }
 
-    /** 同步主线程逻辑；返回是否成功应用了云端配置。 */
-    private static boolean doSync() {
-        String video = Hawk.get(HawkConfig.API_URL, "");
-        String live = Hawk.get(HawkConfig.LIVE_API_URL, "");
-
-        boolean videoOk = isUrlReachable(video);
-        boolean liveOk = isUrlReachable(live);
-
-        // 两者都可用：用户手动设置的源优先，不做任何改动
-        if (videoOk && liveOk) {
-            LOG.i(TAG + " local sources reachable, keep local config");
-            return false;
-        }
-
+    /**
+     * 更新检测：小配置 + HEAD 元数据比对，不下载源文件内容。
+     *
+     * <p>重要：早期版本每次启动都会对直播/点播地址做 GET 可达性探测，虽然不写入缓存，
+     * 但仍会把完整文件拉下来，浪费流量。现在改为 HEAD，只读取响应头。
+     * 若 HEAD 不可用（少数自定义源不支持），再退回 version 字段判断。
+     * 用户手动设置的非云端源不会覆盖，也不会触发自动更新。</p>
+     */
+    private static void checkForUpdates() {
         String configUrl = Hawk.get(KEY_CLOUD_CONFIG, DEFAULT_CONFIG_URL);
         if (TextUtils.isEmpty(configUrl)) configUrl = DEFAULT_CONFIG_URL;
 
         String json = httpGet(configUrl);
         if (TextUtils.isEmpty(json)) {
-            LOG.i(TAG + " fetch cloud config failed, keep local config");
-            return false;
+            LOG.i(TAG + " update check: fetch config failed");
+            return;
         }
-
         CloudConfig cloud = parseCloudConfig(json);
         if (cloud == null) {
-            LOG.i(TAG + " parse cloud config failed");
-            return false;
+            LOG.i(TAG + " update check: parse config failed");
+            return;
         }
 
-        boolean changed = false;
-        if (!videoOk && !TextUtils.isEmpty(cloud.video)) {
-            if (!cloud.video.equals(video)) {
-                Hawk.put(HawkConfig.API_URL, cloud.video);
-                HistoryHelper.setApiHistory(cloud.video);
-                changed = true;
-                LOG.i(TAG + " video source restored from cloud: " + cloud.video);
+        restoreEmptySource(HawkConfig.API_URL, cloud.video, KEY_VIDEO_REMOTE_META);
+        restoreEmptySource(HawkConfig.LIVE_API_URL, cloud.live, KEY_LIVE_REMOTE_META);
+
+        // ---- 直播源：HEAD 指纹变化才清理缓存，交由原生流程重拉 ----
+        if (!TextUtils.isEmpty(cloud.live)) {
+            String currentLive = Hawk.get(HawkConfig.LIVE_API_URL, "");
+            if (isSameSource(currentLive, cloud.live)) {
+                RemoteMeta meta = httpHead(cacheBust(cloud.live));
+                boolean changed = isRemoteChanged(cloud.live, KEY_LIVE_REMOTE_META, cloud.liveVersion, KEY_LIVE_VERSION, meta);
+                if (changed && deleteCache(cloud.live)) {
+                    saveRemoteMeta(KEY_LIVE_REMOTE_META, meta, cloud.liveVersion, KEY_LIVE_VERSION);
+                    LOG.i(TAG + " live cache removed, will refetch on next enter");
+                    // 清空内存直播列表，使下次进入直播页重新加载
+                    try {
+                        ApiConfig.get().clearLiveCache();
+                    } catch (Throwable t) {
+                        LOG.e(TAG + " clear live cache failed: " + t.getMessage());
+                    }
+                } else if (!changed) {
+                    LOG.i(TAG + " live source unchanged, skip download");
+                }
             }
         }
-        if (!liveOk && !TextUtils.isEmpty(cloud.live)) {
-            if (!cloud.live.equals(live)) {
-                Hawk.put(HawkConfig.LIVE_API_URL, cloud.live);
-                HistoryHelper.setLiveApiHistory(cloud.live);
-                changed = true;
-                LOG.i(TAG + " live source restored from cloud: " + cloud.live);
+
+        // ---- 点播源：HEAD 指纹变化才清理缓存与多源切换状态 ----
+        if (!TextUtils.isEmpty(cloud.video)) {
+            String currentVideo = Hawk.get(HawkConfig.API_URL, "");
+            if (isSameSource(currentVideo, cloud.video)) {
+                RemoteMeta meta = httpHead(cacheBust(cloud.video));
+                boolean changed = isRemoteChanged(cloud.video, KEY_VIDEO_REMOTE_META, cloud.videoVersion, KEY_VIDEO_VERSION, meta);
+                if (changed && deleteCache(cloud.video)) {
+                    // 清除多源集合的线路切换状态，避免因旧的子源索引导致加载异常
+                    try {
+                        HistoryHelper.clearApiLineList();
+                    } catch (Throwable ignored) {}
+                    saveRemoteMeta(KEY_VIDEO_REMOTE_META, meta, cloud.videoVersion, KEY_VIDEO_VERSION);
+                    LOG.i(TAG + " video cache removed, will refetch on next enter");
+                } else if (!changed) {
+                    LOG.i(TAG + " video source unchanged, skip download");
+                }
             }
         }
-        if (changed) {
-            Hawk.put(KEY_LAST_CLOUD_SYNC, System.currentTimeMillis());
-        }
-        return changed;
     }
 
-    /** 判断一个源地址是否可用：空地址视为失效；http(s) 地址做一次轻量 HEAD/GET 探测。 */
-    private static boolean isUrlReachable(String url) {
-        if (TextUtils.isEmpty(url)) return false;
-        String trimmed = url.trim();
-        if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
-            // 本地文件 / 特殊协议，交由 App 自身处理，这里视为有效以免误覆盖
-            return true;
+    /** 本地地址为空时从云端配置恢复，用户手动设置的地址不覆盖。 */
+    private static void restoreEmptySource(String key, String cloudUrl, String metaKey) {
+        String current = Hawk.get(key, "");
+        if (TextUtils.isEmpty(current) && !TextUtils.isEmpty(cloudUrl)) {
+            Hawk.put(key, cloudUrl);
+            // 新地址视为首次使用，清掉旧指纹，让后续检查重新记录
+            Hawk.put(metaKey, "");
+            if (HawkConfig.API_URL.equals(key)) HistoryHelper.setApiHistory(cloudUrl);
+            else HistoryHelper.setLiveApiHistory(cloudUrl);
+            LOG.i(TAG + " source restored from cloud: " + cloudUrl);
         }
-        HttpURLConnection conn = null;
+    }
+
+    /** 只用 HEAD 响应头判断远端文件是否变化；HEAD 不支持时用版本字段兜底。 */
+    private static boolean isRemoteChanged(String url, String metaKey, long cloudVersion, String versionKey, RemoteMeta meta) {
+        String oldMeta = Hawk.get(metaKey, "");
+        long localVersion = Hawk.get(versionKey, 0L);
+        String newMeta = meta == null ? "" : meta.signature();
+        if (!TextUtils.isEmpty(newMeta)) {
+            // 首次运行没有旧指纹：若本地已有缓存且版本未升高，则先记录指纹，不重复下载
+            if (TextUtils.isEmpty(oldMeta)) {
+                if (localVersion <= 0 || cloudVersion > localVersion) return true;
+                Hawk.put(metaKey, newMeta);
+                if (cloudVersion > localVersion) Hawk.put(versionKey, cloudVersion);
+                LOG.i(TAG + " remote meta initialized, skip download: " + url);
+                return false;
+            }
+            return !newMeta.equals(oldMeta);
+        }
+        // HEAD 失败时退回版本字段；版本号未变则绝不下载
+        return cloudVersion > 0 && cloudVersion > localVersion;
+    }
+
+    private static void saveRemoteMeta(String metaKey, RemoteMeta meta, long cloudVersion, String versionKey) {
+        if (meta != null && !TextUtils.isEmpty(meta.signature())) Hawk.put(metaKey, meta.signature());
+        if (cloudVersion > 0) Hawk.put(versionKey, cloudVersion);
+    }
+
+    /** HEAD 请求：只取响应头，不读取 body，避免下载源文件内容。 */
+    private static RemoteMeta httpHead(String urlStr) {
+        java.net.HttpURLConnection conn = null;
         try {
-            URL target = new URL(trimmed);
-            conn = (HttpURLConnection) target.openConnection();
+            URL url = new URL(urlStr);
+            conn = (java.net.HttpURLConnection) url.openConnection();
             conn.setConnectTimeout(CONNECT_TIMEOUT_MS);
             conn.setReadTimeout(READ_TIMEOUT_MS);
-            conn.setRequestMethod("GET");
+            conn.setRequestMethod("HEAD");
             conn.setInstanceFollowRedirects(true);
             conn.setRequestProperty("User-Agent", "Mozilla/5.0 (compatible; SanHaoTV/1.0)");
             int code = conn.getResponseCode();
-            return code >= 200 && code < 400;
+            if (code < 200 || code >= 400) return null;
+            String etag = conn.getHeaderField("ETag");
+            String lastModified = conn.getHeaderField("Last-Modified");
+            long length = conn.getHeaderFieldLong("Content-Length", -1L);
+            if (TextUtils.isEmpty(etag) && TextUtils.isEmpty(lastModified) && length <= 0) return null;
+            return new RemoteMeta(etag, lastModified, length);
         } catch (Throwable t) {
-            LOG.i(TAG + " unreachable: " + trimmed + " (" + t.getMessage() + ")");
-            return false;
+            LOG.i(TAG + " httpHead failed: " + t.getMessage());
+            return null;
         } finally {
             if (conn != null) conn.disconnect();
         }
     }
 
-    /** 简单的 HTTP GET，返回字符串；失败返回 null。 */
+    /** 给 raw 链接加时间戳，绕过 CDN 缓存，保证拿到最新 ETag。 */
+    private static String cacheBust(String url) {
+        if (TextUtils.isEmpty(url)) return url;
+        return url + (url.contains("?") ? "&" : "?") + "_ts=" + System.currentTimeMillis();
+    }
+
+    private static final class RemoteMeta {
+        final String etag;
+        final String lastModified;
+        final long length;
+
+        RemoteMeta(String etag, String lastModified, long length) {
+            this.etag = etag == null ? "" : etag.trim();
+            this.lastModified = lastModified == null ? "" : lastModified.trim();
+            this.length = length;
+        }
+
+        String signature() {
+            return etag + "|" + lastModified + "|" + length;
+        }
+    }
+
+    /** 判断当前生效源是否就是云端源（去除空白与末尾斜杠后比较），避免覆盖用户手动改的源。 */
+    private static boolean isSameSource(String current, String cloud) {
+        if (TextUtils.isEmpty(current)) return true; // 未设置时允许云端写入
+        return normalize(current).equals(normalize(cloud));
+    }
+
+    private static String normalize(String s) {
+        if (s == null) return "";
+        String t = s.trim();
+        while (t.endsWith("/")) t = t.substring(0, t.length() - 1);
+        return t;
+    }
+
+    /** 简单校验直播源内容：含 #genre# 或 http 链接或 EXTINF。 */
+    private static boolean looksLikeLiveSource(String content) {
+        return content.contains("#genre#") || content.contains("#EXTM3U")
+                || content.contains("http://") || content.contains("https://");
+    }
+
+    /** 简单校验点播源内容：应为 JSON 且含 urls / api 结构。 */
+    private static boolean looksLikeVideoSource(String content) {
+        String t = content.trim();
+        boolean isJson = (t.startsWith("{") && t.endsWith("}")) || (t.startsWith("[") && t.endsWith("]"));
+        return isJson && (t.contains("url") || t.contains("api"));
+    }
+
+    /**
+     * 删除 ApiConfig 使用的缓存文件：filesDir / MD5(sourceUrl)。
+     * 删除后 App 走原生 loadConfig/loadLiveConfig 流程会自动重新从网络拉取最新内容，
+     * 完全复用 TVBox 原生解析逻辑，避免手工写缓存带来的格式/并发问题。
+     */
+    private static boolean deleteCache(String sourceUrl) {
+        try {
+            File dir = App.getInstance().getFilesDir();
+            File cache = new File(dir.getAbsolutePath() + "/" + MD5.encode(sourceUrl));
+            boolean deleted = false;
+            if (cache.exists()) deleted = cache.delete();
+            // 同时清理可能残留的临时文件
+            File tmp = new File(cache.getAbsolutePath() + ".tmp");
+            if (tmp.exists()) tmp.delete();
+            return deleted || !cache.exists();
+        } catch (Throwable t) {
+            LOG.e(TAG + " deleteCache failed: " + t.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * 把内容写入 ApiConfig 使用的缓存文件：filesDir / MD5(sourceUrl)。
+     * 与 ApiConfig.loadConfig/loadLiveConfig 的缓存路径保持一致。
+     * 现已不再使用，保留仅为兼容。
+     */
+    private static boolean writeCache(String sourceUrl, String content) {
+        File dir = App.getInstance().getFilesDir();
+        File cache = new File(dir.getAbsolutePath() + "/" + MD5.encode(sourceUrl));
+        FileOutputStream fos = null;
+        try {
+            if (!dir.exists()) dir.mkdirs();
+            File tmp = new File(cache.getAbsolutePath() + ".tmp");
+            fos = new FileOutputStream(tmp);
+            fos.write(content.getBytes(StandardCharsets.UTF_8));
+            fos.flush();
+            fos.close();
+            fos = null;
+            if (cache.exists()) cache.delete();
+            return tmp.renameTo(cache);
+        } catch (Throwable t) {
+            LOG.e(TAG + " writeCache failed: " + t.getMessage());
+            return false;
+        } finally {
+            if (fos != null) {
+                try { fos.close(); } catch (Throwable ignored) {}
+            }
+        }
+    }
+
+    /** 简单的 HTTP GET，返回字符串；失败返回 null。上限 8MB。 */
     private static String httpGet(String urlStr) {
         HttpURLConnection conn = null;
-        BufferedReader reader = null;
+        InputStream is = null;
         try {
             URL url = new URL(urlStr);
             conn = (HttpURLConnection) url.openConnection();
@@ -166,30 +343,35 @@ public final class RemoteSourceHelper {
             conn.setRequestProperty("User-Agent", "Mozilla/5.0 (compatible; SanHaoTV/1.0)");
             int code = conn.getResponseCode();
             if (code < 200 || code >= 400) return null;
-            reader = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                sb.append(line).append('\n');
-                if (sb.length() > 1024 * 1024) break; // 上限 1MB，防止异常大文件
+            is = conn.getInputStream();
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int len;
+            int total = 0;
+            while ((len = is.read(buf)) != -1) {
+                bos.write(buf, 0, len);
+                total += len;
+                if (total > 8 * 1024 * 1024) break; // 上限 8MB
             }
-            return sb.toString();
+            return new String(bos.toByteArray(), StandardCharsets.UTF_8);
         } catch (Throwable t) {
             LOG.e(TAG + " httpGet failed: " + t.getMessage());
             return null;
         } finally {
-            try { if (reader != null) reader.close(); } catch (Throwable ignored) {}
+            try { if (is != null) is.close(); } catch (Throwable ignored) {}
             if (conn != null) conn.disconnect();
         }
     }
 
-    /** 解析云端配置，兼容 {video, live} 与 {urls:[...]} 两种结构。 */
+    /** 解析云端配置，兼容 {video, live, video_version, live_version} 与 urls 数组。 */
     private static CloudConfig parseCloudConfig(String json) {
         try {
             JSONObject obj = new JSONObject(json);
             CloudConfig cfg = new CloudConfig();
             if (obj.has("video")) cfg.video = obj.optString("video", "");
             if (obj.has("live")) cfg.live = obj.optString("live", "");
+            if (obj.has("video_version")) cfg.videoVersion = obj.optLong("video_version", 0L);
+            if (obj.has("live_version")) cfg.liveVersion = obj.optLong("live_version", 0L);
 
             if (TextUtils.isEmpty(cfg.video) && obj.has("urls")) {
                 cfg.video = firstUrl(obj.optJSONArray("urls"));
@@ -226,5 +408,7 @@ public final class RemoteSourceHelper {
     private static final class CloudConfig {
         String video;
         String live;
+        long videoVersion;
+        long liveVersion;
     }
 }

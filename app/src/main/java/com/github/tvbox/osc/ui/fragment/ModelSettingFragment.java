@@ -44,6 +44,7 @@ import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.HistoryHelper;
 import com.github.tvbox.osc.util.LOG;
 import com.github.tvbox.osc.util.OkGoHelper;
+import com.github.tvbox.osc.util.PanAuthHelper;
 import com.github.tvbox.osc.util.PlayerHelper;
 import com.github.tvbox.osc.viewmodel.SourceViewModel;
 import com.lzy.okgo.OkGo;
@@ -203,6 +204,24 @@ public class ModelSettingFragment extends BaseLazyFragment {
                 dialog.show();
             }
         });
+        findViewById(R.id.llPanAuth).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FastClickCheckUtil.check(v);
+                Toast.makeText(mContext, "正在获取网盘授权页面…", Toast.LENGTH_SHORT).show();
+                PanAuthHelper.openAuth(mActivity, new PanAuthHelper.Callback() {
+                    @Override
+                    public void onOpen() {
+                    }
+
+                    @Override
+                    public void onFail(String reason) {
+                        Toast.makeText(mContext, reason + "\n请通过『我的-其他配置』进入配置中心扫码授权",
+                                Toast.LENGTH_LONG).show();
+                    }
+                });
+            }
+        });
         findViewById(R.id.llAbout).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -342,6 +361,20 @@ public class ModelSettingFragment extends BaseLazyFragment {
                     }
 
                     @Override
+                    public void onLiveChange(String live) {
+                        String oldLive = Hawk.get(HawkConfig.LIVE_API_URL, "");
+                        Hawk.put(HawkConfig.LIVE_API_URL, live);
+                        HistoryHelper.setLiveApiHistory(live);
+                        try {
+                            ApiConfig.get().clearLiveCache();
+                        } catch (Throwable ignored) {
+                        }
+                        if (!oldLive.equals(live)) {
+                            restartAppAfterConfigChanged();
+                        }
+                    }
+
+                    @Override
                     public void onLocalConfig(boolean live) {
                         openLocalConfig(live);
                     }
@@ -377,9 +410,9 @@ public class ModelSettingFragment extends BaseLazyFragment {
                         if (!HistoryHelper.isApiLineHistory(value)) {
                             HistoryHelper.clearApiLineList();
                         }
+                        // 这是点播历史入口：只切换点播地址，不写直播地址
                         Hawk.put(HawkConfig.API_URL, value);
-                        Hawk.put(HawkConfig.LIVE_API_URL, value);
-                        HistoryHelper.setLiveApiHistory(value);
+                        HistoryHelper.setApiHistory(value);
                         tvApi.setText(value);
                         refreshApiLineText();
                         dialog.dismiss();
@@ -390,7 +423,9 @@ public class ModelSettingFragment extends BaseLazyFragment {
 
                     @Override
                     public void del(String value, ArrayList<String> data) {
+                        // 删除后仍由 HistoryHelper 把初始地址固定回第一条
                         Hawk.put(HawkConfig.API_HISTORY, data);
+                        HistoryHelper.ensureApiHistory(HawkConfig.API_HISTORY, HistoryHelper.DEFAULT_VIDEO_API);
                     }
                 }, history, idx);
                 dialog.show();

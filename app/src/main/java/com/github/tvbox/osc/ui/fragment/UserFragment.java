@@ -25,6 +25,7 @@ import com.github.tvbox.osc.ui.activity.CollectActivity;
 import com.github.tvbox.osc.ui.activity.DetailActivity;
 import com.github.tvbox.osc.ui.activity.FastSearchActivity;
 import com.github.tvbox.osc.ui.activity.HistoryActivity;
+import com.github.tvbox.osc.ui.activity.HomeActivity;
 import com.github.tvbox.osc.ui.activity.LivePlayActivity;
 import com.github.tvbox.osc.ui.activity.PushActivity;
 import com.github.tvbox.osc.ui.activity.SearchActivity;
@@ -67,6 +68,7 @@ public class UserFragment extends BaseLazyFragment implements View.OnClickListen
     private LinearLayout tvLive;
     private LinearLayout tvSearch;
     private LinearLayout tvSetting;
+    private LinearLayout tvOtherConfig;
     private LinearLayout tvTransfer;
     private LinearLayout tvHistory;
     private LinearLayout tvCollect;
@@ -163,6 +165,7 @@ public class UserFragment extends BaseLazyFragment implements View.OnClickListen
         tvLive = findViewById(R.id.tvLive);
         tvSearch = findViewById(R.id.tvSearch);
         tvSetting = findViewById(R.id.tvSetting);
+        tvOtherConfig = findViewById(R.id.tvOtherConfig);
         tvTransfer = findViewById(R.id.tvTransfer);
         tvTransfer.setVisibility(ScreenUtils.isTv(mContext) ? View.VISIBLE : View.GONE);
         tvCollect = findViewById(R.id.tvFavorite);
@@ -171,6 +174,7 @@ public class UserFragment extends BaseLazyFragment implements View.OnClickListen
         tvLive.setOnClickListener(this);
         tvSearch.setOnClickListener(this);
         tvSetting.setOnClickListener(this);
+        tvOtherConfig.setOnClickListener(this);
         tvTransfer.setOnClickListener(this);
         tvHistory.setOnClickListener(this);
         tvPush.setOnClickListener(this);
@@ -178,6 +182,7 @@ public class UserFragment extends BaseLazyFragment implements View.OnClickListen
         tvLive.setOnFocusChangeListener(focusChangeListener);
         tvSearch.setOnFocusChangeListener(focusChangeListener);
         tvSetting.setOnFocusChangeListener(focusChangeListener);
+        tvOtherConfig.setOnFocusChangeListener(focusChangeListener);
         tvTransfer.setOnFocusChangeListener(focusChangeListener);
         tvHistory.setOnFocusChangeListener(focusChangeListener);
         tvPush.setOnFocusChangeListener(focusChangeListener);
@@ -385,6 +390,13 @@ public class UserFragment extends BaseLazyFragment implements View.OnClickListen
             jumpActivity(SearchActivity.class);
         } else if (v.getId() == R.id.tvSetting) {
             jumpActivity(SettingActivity.class);
+        } else if (v.getId() == R.id.tvOtherConfig) {
+            // 三好TV：一键进入配置中心（网盘授权 / 扫码页）
+            if (getActivity() instanceof HomeActivity) {
+                ((HomeActivity) getActivity()).openConfigCenter();
+            } else {
+                jumpActivity(SettingActivity.class);
+            }
         } else if (v.getId() == R.id.tvTransfer) {
             jumpActivity(TransferActivity.class);
         } else if (v.getId() == R.id.tvHistory) {
