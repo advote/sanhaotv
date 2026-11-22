@@ -93,10 +93,22 @@ public class VodInfo implements Serializable {
         }
     }
 
-    private int extractNumber(String name) {
+    private long extractNumber(String name) {
         java.util.regex.Matcher matcher = getPattern("\\d+").matcher(name);
         if (matcher.find()) {
-            return Integer.parseInt(matcher.group());
+            String digits = matcher.group();
+            try {
+                // 三好TV：部分源用超长数字 ID 作为剧集名（如 408685824001704075），
+                // 超出 int 范围会导致 NumberFormatException 崩溃，改用 long 解析
+                return Long.parseLong(digits);
+            } catch (NumberFormatException e) {
+                // 超出 long 范围时截取前 18 位近似比较，保证不崩溃
+                try {
+                    return Long.parseLong(digits.substring(0, 18));
+                } catch (Throwable t) {
+                    return 0;
+                }
+            }
         }
         return 0;
     }
@@ -105,8 +117,8 @@ public class VodInfo implements Serializable {
         // 比较最多前 6 个相邻元素对
         int limit = Math.min(list.size() - 1, 6);
         for (int i = 0; i < limit; i++) {
-            int current = extractNumber(list.get(i).name);
-            int next = extractNumber(list.get(i + 1).name);
+            long current = extractNumber(list.get(i).name);
+            long next = extractNumber(list.get(i + 1).name);
             if (current < next) {
                 ascCount++;
                 if (ascCount == 2) return false;
