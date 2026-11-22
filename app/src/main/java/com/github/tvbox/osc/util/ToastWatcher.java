@@ -30,6 +30,15 @@ public final class ToastWatcher {
     private static final List<Listener> sListeners = new CopyOnWriteArrayList<>();
     private static volatile boolean sInstalled;
 
+    /**
+     * 三好TV：需要屏蔽的 Toast 关键词。
+     * 第三方 spider 接口包（加固 jar）在接口加载时会弹“本接口免费分享”这类
+     * 原作者宣示文案，与用户无关，命中关键词的 Toast 直接吞掉不显示。
+     */
+    private static final String[] BLOCK_KEYWORDS = {
+            "免费分享", "仅供学习", "仅供测试", "禁止倒卖", "请勿商用"
+    };
+
     public static void setListener(Listener l) {
         if (l != null && !sListeners.contains(l)) sListeners.add(l);
     }
@@ -66,6 +75,10 @@ public final class ToastWatcher {
                             if (method.getName().startsWith("enqueueToast")) {
                                 CharSequence text = extractText(args);
                                 if (text != null) {
+                                    // 屏蔽名单：第三方接口的宣示文案直接吞掉，不转发给系统
+                                    if (shouldBlock(text)) {
+                                        return null;
+                                    }
                                     for (Listener l : sListeners) {
                                         try {
                                             l.onToast(text);
@@ -84,6 +97,16 @@ public final class ToastWatcher {
             field.set(null, proxy);
         } catch (Throwable ignored) {
         }
+    }
+
+    /** 判断 Toast 文本是否命中屏蔽关键词。 */
+    private static boolean shouldBlock(CharSequence text) {
+        if (text == null) return false;
+        String t = text.toString();
+        for (String k : BLOCK_KEYWORDS) {
+            if (t.contains(k)) return true;
+        }
+        return false;
     }
 
     /** 从 enqueueToast 参数里取出 Toast 文本。 */
