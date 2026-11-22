@@ -93,7 +93,31 @@ public final class RemoteSourceHelper {
     /** 三好TV：与 EXECUTOR 分离的限时工作池，避免单线程池内自等待死锁。 */
     private static final ExecutorService SYNC_WORKER = Executors.newSingleThreadExecutor();
 
+    /** 三好TV：云端更新检测的最小间隔（6 小时）。间隔内锁屏/解锁恢复不重新下载源文件。 */
+    private static final long CHECK_INTERVAL_MS = 6L * 60L * 60L * 1000L;
+    /** 三好TV：上次云端更新检测的时间戳（墙钟）。 */
+    public static final String KEY_LAST_CHECK_TIME = "sanhao_last_check_time";
+    /** 三好TV：本进程是否已做过更新检测（进程内去重）。 */
+    private static volatile boolean sCheckedThisProcess = false;
+
     public static void syncOnStartup() {
+        // 三好TV：手机端锁屏后进程常被系统回收，解锁回来等于一次冷启动，
+        // 会再次走到这里。绝不能每次都重新检测并重下直播/点播源：
+        // 1) 同一进程生命周期内只检测一次；
+        // 2) 距上次检测不足 CHECK_INTERVAL_MS 的（跨进程也生效）直接跳过，
+        //    一律使用本地缓存 / APK 内置文件。
+        if (sCheckedThisProcess) {
+            LOG.i(TAG + " update check skipped: already checked in this process");
+            return;
+        }
+        sCheckedThisProcess = true;
+        long lastCheck = Hawk.get(KEY_LAST_CHECK_TIME, 0L);
+        long now = System.currentTimeMillis();
+        if (lastCheck > 0 && now > lastCheck && now - lastCheck < CHECK_INTERVAL_MS) {
+            LOG.i(TAG + " update check skipped: last check too recent");
+            return;
+        }
+        Hawk.put(KEY_LAST_CHECK_TIME, now);
         // 三好TV：整体硬限时 15 秒。网络差（DNS 失败 / TLS 抖动）时 HTTP 超时
         // 会层层叠加，把启动等待页拖到几十秒；超时后放弃检测，直播与点播
         // 直接读取本地缓存或 APK 内置文件，绝不阻塞启动。
