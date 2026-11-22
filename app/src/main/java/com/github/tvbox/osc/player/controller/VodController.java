@@ -125,7 +125,8 @@ public class VodController extends BaseController {
                             net_play_speed.setVisibility(GONE);
                         }
                         boolean isPortrait = getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT;
-                        backBtn.setVisibility(ScreenUtils.isTv(context) || isPortrait ? INVISIBLE : VISIBLE);
+                        // 三好TV：返回键在 TV / 手机端统一显示，只在竖屏下隐藏（竖屏由系统返回手势承担）
+                        backBtn.setVisibility(isPortrait ? INVISIBLE : VISIBLE);
                         showLockView();
                         break;
                     }
@@ -301,7 +302,8 @@ public class VodController extends BaseController {
             }
             return;
         }
-        mLockView.setVisibility(ScreenUtils.isTv(getContext()) ? INVISIBLE : VISIBLE);
+        // 三好TV：锁屏入口在 TV / 手机端统一显示（两端都可通过聚焦点击开锁）
+        mLockView.setVisibility(VISIBLE);
         mHandler.removeCallbacks(lockRunnable);
         if (isLock) {
             mHandler.postDelayed(lockRunnable, 3000);
@@ -1089,7 +1091,9 @@ public class VodController extends BaseController {
 
         if (mLandscapePortraitBtn == null) return;
         boolean showButton = false;
-        if (mControlWrapper != null && mActivity != null && !ScreenUtils.isTv(mActivity)) {
+        // 三好TV：横竖屏切换按钮改为纯屏幕尺寸判定（<10 英寸），不再按“是否 TV”一刀切，
+        // 保证同一形态设备（如小屏电视棒 / 大屏平板）两端行为可预期。
+        if (mControlWrapper != null && mActivity != null) {
             int[] videoSize = mControlWrapper.getVideoSize();
             int width = videoSize[0];
             int height = videoSize[1];

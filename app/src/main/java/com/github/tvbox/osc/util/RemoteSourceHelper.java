@@ -87,22 +87,41 @@ public final class RemoteSourceHelper {
      *       让 TVBox 原生流程重新下载一次。</li>
      * </ol>
      */
+    /** 三好TV：启动时 GitHub 更新检测的总时限（毫秒）。超过即放弃检测，使用本地源文件。 */
+    public static final long STARTUP_SYNC_TIMEOUT_MS = 15000;
+
+    /** 三好TV：与 EXECUTOR 分离的限时工作池，避免单线程池内自等待死锁。 */
+    private static final ExecutorService SYNC_WORKER = Executors.newSingleThreadExecutor();
+
     public static void syncOnStartup() {
-        EXECUTOR.execute(new Runnable() {
+        // 三好TV：整体硬限时 15 秒。网络差（DNS 失败 / TLS 抖动）时 HTTP 超时
+        // 会层层叠加，把启动等待页拖到几十秒；超时后放弃检测，直播与点播
+        // 直接读取本地缓存或 APK 内置文件，绝不阻塞启动。
+        final Thread waiter = new Thread(new Runnable() {
             @Override
             public void run() {
+                final java.util.concurrent.Future<?> task = SYNC_WORKER.submit(new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            checkForUpdates();
+                        } catch (Throwable t) {
+                            LOG.e(TAG + " update check failed: " + t.getMessage());
+                        }
+                    }
+                });
                 try {
-                    checkForUpdates();
+                    task.get(STARTUP_SYNC_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS);
+                } catch (java.util.concurrent.TimeoutException te) {
+                    task.cancel(true);
+                    LOG.i(TAG + " update check aborted after " + STARTUP_SYNC_TIMEOUT_MS + "ms, use local sources");
                 } catch (Throwable t) {
-                    LOG.e(TAG + " update check failed: " + t.getMessage());
-                }
-                try {
-                    checkForUpdates();
-                } catch (Throwable t) {
-                    LOG.e(TAG + " update check failed: " + t.getMessage());
+                    LOG.e(TAG + " update check interrupted: " + t.getMessage());
                 }
             }
-        });
+        }, "sanhao-sync-watchdog");
+        waiter.setDaemon(true);
+        waiter.start();
     }
 
     /**

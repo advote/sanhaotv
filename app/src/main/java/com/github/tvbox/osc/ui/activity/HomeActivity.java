@@ -106,6 +106,17 @@ public class HomeActivity extends BaseActivity {
     private boolean inConfigCenterMode = false;
     private boolean pendingLocateConfigSort = false;
     private boolean configCenterLocating = false;
+    /** 三好TV：进入配置中心的时刻（单调时钟）。刚进入的头几秒内，程序化的
+     * 选中/焦点事件（重建分类栏时的 setSelectedPosition(0)、焦点落位等）
+     * 在慢设备上当贝投影上可能晚于 locating 窗口才回调，会被误判为
+     * “用户按了主页”而退出配置中心。这里用 3 秒保护期挡住这类误触发。 */
+    private long configCenterEnteredAt = 0L;
+
+    /** 是否处于“刚进入配置中心”的保护期内（保护期内选中“主页”不触发退出）。 */
+    private boolean inConfigEnterGuard() {
+        return inConfigCenterMode
+                && android.os.SystemClock.elapsedRealtime() - configCenterEnteredAt < 3000L;
+    }
     private boolean homeSortLoading = false;
     private boolean refreshHomeRec = false;
     private final Handler mHandler = new Handler();
@@ -225,7 +236,7 @@ public class HomeActivity extends BaseActivity {
 
             public void onItemSelected(TvRecyclerView tvRecyclerView, View view, int position) {
                 // 三好TV：在配置中心模式下，用户主动选中“主页”分类（position 0）时切回点播首页
-                if (inConfigCenterMode && !configCenterLocating && position == 0) {
+                if (inConfigCenterMode && !configCenterLocating && !inConfigEnterGuard() && position == 0) {
                     exitConfigCenterToVod();
                     return;
                 }
@@ -254,7 +265,7 @@ public class HomeActivity extends BaseActivity {
                 // 三好TV：配置中心模式下，点击“主页”tab（position 0）也要切回点播首页。
                 // 之前只依赖 onItemSelected（焦点变化），鼠标点击已获焦点的 tab 时
                 // 不会触发焦点变化，导致点了“主页”却停留在配置中心，这里补上点击回调。
-                if (inConfigCenterMode && !configCenterLocating && position == 0) {
+                if (inConfigCenterMode && !configCenterLocating && !inConfigEnterGuard() && position == 0) {
                     exitConfigCenterToVod();
                     return;
                 }
@@ -381,16 +392,38 @@ public class HomeActivity extends BaseActivity {
                     if (mViewPager != null) mViewPager.setCurrentItem(target, false);
                     mGridView.setSelectedPosition(target);
                     View child = mGridView.getLayoutManager() == null ? null : mGridView.getLayoutManager().findViewByPosition(target);
-                    if (child != null) child.requestFocus();
-                    changeTop(true);
-                    LOG.i("locateConfigSort -> " + target);
+                    if (child != null) {
+                        child.requestFocus();
+                        changeTop(true);
+                        LOG.i("locateConfigSort -> " + target);
+                        // 定位成功才解除保护，避免慢设备上后续程序化选中(0)误触发退出
+                        mHandler.postDelayed(() -> configCenterLocating = false, 300);
+                        return;
+                    }
+                }
+                // 三好TV：慢设备（如当贝投影）上分类栏可能尚未完成布局，child 拿不到。
+                // 此时绝不能停在“主页”上（停留会触发退出配置中心），改为隔帧重试。
+                locateRetryCount++;
+                if (locateRetryCount <= 8) {
+                    mHandler.postDelayed(this::runLocateAttempt, 120);
+                } else {
+                    LOG.e("locateConfigSort gave up after retries");
+                    configCenterLocating = false;
                 }
             } catch (Throwable t) {
                 LOG.e("locateConfigSort err: " + t.getMessage());
+                configCenterLocating = false;
             }
-            // 延迟解除，避开程序化选中触发的 onItemSelected(0)
-            mHandler.postDelayed(() -> configCenterLocating = false, 400);
         });
+    }
+
+    private int locateRetryCount = 0;
+
+    /** locateConfigSort 的重试入口：每轮重试都重新走一遍定位逻辑。 */
+    private void runLocateAttempt() {
+        if (isActivityUnavailable() || !inConfigCenterMode) { configCenterLocating = false; return; }
+        configCenterLocating = true;
+        mHandler.post(this::locateConfigSort);
     }
 
     private boolean dataInitOk = false;
@@ -930,6 +963,8 @@ public class HomeActivity extends BaseActivity {
                 vodSourceBeforeConfig = current;
             }
             inConfigCenterMode = true;
+            configCenterEnteredAt = android.os.SystemClock.elapsedRealtime();
+            locateRetryCount = 0;
             // 三好TV：每次进入配置中心清除旧的“已登录”标记，让状态按实际 Cookie 重新显示
             com.github.tvbox.osc.ui.fragment.GridFragment.clearLoggedInSources();
             // 三好TV：进入配置中心后自动定位到“综合设置”tab；

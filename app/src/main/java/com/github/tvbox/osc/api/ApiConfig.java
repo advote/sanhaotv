@@ -397,6 +397,9 @@ public class ApiConfig {
         void error(String error);
     }
 
+    /** 三好TV：启动联网检测/下载的总时限（秒）。超过即放弃网络，转用本地缓存或内置文件。 */
+    public static final int CONFIG_FETCH_TIMEOUT_SECONDS = 15;
+
     private void fetchConfigAsync(final String apiUrl, final String requestUrl, final String configKey, final ConfigFetchCallback callback) {
         configLoadExecutor.execute(new Runnable() {
             @Override
@@ -404,30 +407,44 @@ public class ApiConfig {
                 String result = "";
                 String error = "";
                 okhttp3.Response response = null;
-                try {
-                    okhttp3.Request request = new okhttp3.Request.Builder()
-                            .url(requestUrl)
-                            .header("User-Agent", userAgent)
-                            .build();
-                    okhttp3.OkHttpClient client = OkGoHelper.getDefaultClient();
-                    if (client == null) client = com.github.catvod.net.OkHttp.client();
-                    response = client.newCall(request).execute();
-                    if (!response.isSuccessful()) {
-                        error = "HTTP " + response.code();
-                    } else if (response.body() == null) {
-                        error = "empty body";
-                    } else {
-                        result = FindResult(response.body().string(), configKey);
-                        if (apiUrl.startsWith("clan")) {
-                            result = clanContentFix(clanToAddress(apiUrl), result);
+                // 三好TV：用独立线程 + Future 硬限时。OkGo 默认超时过长（连接+读取可叠加到
+                // 1 分钟以上），导致启动等待页转圈过久。超过 CONFIG_FETCH_TIMEOUT_SECONDS
+                // 直接取消请求，走下方的本地缓存 / 内置 assets 兜底。
+                final java.util.concurrent.ExecutorService fetchWorker = java.util.concurrent.Executors.newSingleThreadExecutor();
+                final java.util.concurrent.Future<String> fetchFuture = fetchWorker.submit(new java.util.concurrent.Callable<String>() {
+                    @Override
+                    public String call() throws Exception {
+                        okhttp3.Request request = new okhttp3.Request.Builder()
+                                .url(requestUrl)
+                                .header("User-Agent", userAgent)
+                                .build();
+                        okhttp3.OkHttpClient client = OkGoHelper.getDefaultClient();
+                        if (client == null) client = com.github.catvod.net.OkHttp.client();
+                        okhttp3.Response resp = client.newCall(request).execute();
+                        try {
+                            if (!resp.isSuccessful()) throw new IllegalStateException("HTTP " + resp.code());
+                            if (resp.body() == null) throw new IllegalStateException("empty body");
+                            String body = resp.body().string();
+                            String r = FindResult(body, configKey);
+                            if (apiUrl.startsWith("clan")) {
+                                r = clanContentFix(clanToAddress(apiUrl), r);
+                            }
+                            return fixContentPath(apiUrl, r);
+                        } finally {
+                            closeQuietly(resp.body());
                         }
-                        result = fixContentPath(apiUrl, result);
                     }
+                });
+                try {
+                    result = fetchFuture.get(CONFIG_FETCH_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS);
+                } catch (java.util.concurrent.TimeoutException te) {
+                    fetchFuture.cancel(true);
+                    error = "下载超时(" + CONFIG_FETCH_TIMEOUT_SECONDS + "s)";
                 } catch (Throwable th) {
                     error = th.getMessage();
                     if (TextUtils.isEmpty(error)) error = th.toString();
                 } finally {
-                    if (response != null) closeQuietly(response.body());
+                    fetchWorker.shutdownNow();
                 }
                 // 三好TV：网络拉取失败时，默认源使用 APK 内置 assets 兜底。
                 // 仅对 GitHub 默认源生效，用户手动设置的第三方源仍走原有失败提示，
