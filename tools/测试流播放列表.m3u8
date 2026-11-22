@@ -1,0 +1,27 @@
+#EXTM3U
+#EXTINF:-1,Big Buck Bunny 预告 (W3C) [MP4]
+https://media.w3.org/2010/05/sintel/trailer.mp4
+#EXTINF:-1,Bunny 电影 (W3C) [MP4]
+https://media.w3.org/2010/05/bunny/movie.mp4
+#EXTINF:-1,mov_bbb (W3Schools) [MP4]
+https://www.w3schools.com/html/mov_bbb.mp4
+#EXTINF:-1,movie.mp4 (W3Schools) [MP4]
+https://www.w3schools.com/html/movie.mp4
+#EXTINF:-1,flower CC0 (MDN) [MP4]
+https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4
+#EXTINF:-1,flower.webm (MDN) [WEBM]
+https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.webm
+#EXTINF:-1,oceans (video.js) [MP4]
+https://vjs.zencdn.net/v/oceans.mp4
+#EXTINF:-1,x36xhzz (Mux) [HLS]
+https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
+#EXTINF:-1,test_001 (Mux) [HLS]
+https://test-streams.mux.dev/test_001/stream.m3u8
+#EXTINF:-1,pts_shift (Mux) [HLS]
+https://test-streams.mux.dev/pts_shift/master.m3u8
+#EXTINF:-1,BipBop advanced (Apple) [HLS]
+https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8
+#EXTINF:-1,BipBop 4x3 (Apple) [HLS]
+https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/bipbop_4x3_variant.m3u8
+#EXTINF:-1,Tears of Steel (Unified) [HLS]
+https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tears-of-steel.ism/.m3u8

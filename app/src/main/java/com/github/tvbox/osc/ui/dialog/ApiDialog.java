@@ -291,6 +291,34 @@ public class ApiDialog extends BaseDialog {
         dismiss();
     }
 
+    /**
+     * 三好TV：点击历史记录后立即把该地址应用为当前生效源。
+     * 之前仅 setText + Hawk.put 并关闭子弹窗，未触发 onchange/重启，导致点了不生效。
+     *
+     * @param value 历史中的地址
+     * @param live  true=直播地址，false=点播地址
+     */
+    private void applyHistoryAddress(String value, boolean live) {
+        if (value == null || value.trim().isEmpty()) return;
+        value = value.trim();
+        if (live) {
+            // 直播：写入 LIVE_API_URL + 历史，然后借 onchange 触发重启加载（用当前点播地址作为参数，避免误改点播源）
+            inputApiLive.setText(value);
+            Hawk.put(HawkConfig.LIVE_API_URL, value);
+            HistoryHelper.setLiveApiHistory(value);
+            String currentVideo = Hawk.get(HawkConfig.API_URL, "");
+            if (listener != null && currentVideo != null && !currentVideo.isEmpty()) {
+                listener.onchange(currentVideo);
+            }
+        } else {
+            // 点播：设置输入框 + 历史，onchange 会写入 API_URL 并重启加载
+            inputApi.setText(value);
+            HistoryHelper.setApiHistory(value);
+            if (listener != null) listener.onchange(value);
+        }
+        dismiss();
+    }
+
     public void setOnListener(OnListener listener) {
         this.listener = listener;
     }

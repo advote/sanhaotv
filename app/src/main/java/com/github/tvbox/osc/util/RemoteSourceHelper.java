@@ -96,6 +96,11 @@ public final class RemoteSourceHelper {
                 } catch (Throwable t) {
                     LOG.e(TAG + " update check failed: " + t.getMessage());
                 }
+                try {
+                    checkForUpdates();
+                } catch (Throwable t) {
+                    LOG.e(TAG + " update check failed: " + t.getMessage());
+                }
             }
         });
     }
