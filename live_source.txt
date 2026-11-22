@@ -100,8 +100,6 @@ CGTN,http://113.98.11.46:3000/609017205
 武术世界,http://113.98.11.46:3000/958475359
 快乐垂钓,http://113.98.11.46:3000/961930263
 建党105周年巡礼,http://113.98.11.46:3000/713600957
-经典香港电影,http://113.98.11.46:3000/625703337
-新片放映厅,http://113.98.11.46:3000/619495952
 CHC影迷电影,http://113.98.11.46:3000/952383261
 CHC动作电影,http://113.98.11.46:3000/644368714
 CHC家庭影院,http://113.98.11.46:3000/644368373
@@ -248,19 +246,10 @@ CCTV-女性时尚,http://204.12.221.218:8181/3m1080p/nxss.m3u8
 北京国际频道,http://route.079915.xyz:4022/rtp/239.3.1.235:8000
 爱上4K,http://route.079915.xyz:4022/rtp/239.3.1.236:2000
 4K超清,http://route.079915.xyz:4022/rtp/239.3.1.249:8001
-淘电影(源1),http://route.079915.xyz:4022/rtp/239.3.1.250:8001
-淘电影(源2),http://route.079915.xyz:4022/rtp/239.3.1.111:8001
 星影,http://route.079915.xyz:4022/rtp/239.3.1.94:4120
-动作影院,http://route.079915.xyz:4022/rtp/239.3.1.92:4120
 光影,http://route.079915.xyz:4022/rtp/239.3.1.84:4120
-喜剧影院,http://route.079915.xyz:4022/rtp/239.3.1.91:4120
-家庭影院,http://route.079915.xyz:4022/rtp/239.3.1.93:4120
 精选,http://route.079915.xyz:4022/rtp/239.3.1.74:4120
-经典电影,http://route.079915.xyz:4022/rtp/239.3.1.195:9024
 纪实人文,http://route.079915.xyz:4022/rtp/239.3.1.212:8060
-淘剧场(源1),http://route.079915.xyz:4022/rtp/239.3.1.95:8001
-淘剧场(源2),http://route.079915.xyz:4022/rtp/239.3.1.112:8001
-都市剧场,http://route.079915.xyz:4022/rtp/239.3.1.203:8001
 淘娱乐(源1),http://route.079915.xyz:4022/rtp/239.3.1.100:8001
 淘娱乐(源2),http://route.079915.xyz:4022/rtp/239.3.1.113:8001
 淘BABY,http://route.079915.xyz:4022/rtp/239.3.1.238:8001
@@ -279,10 +268,6 @@ CCTV-女性时尚,http://204.12.221.218:8181/3m1080p/nxss.m3u8
 上海新闻综合(源3),https://live.264788.xyz/channel/shanghaixinwenzonghe?streamid=c0bc623be007e5295d462465c7bd7bd7&livekey=01WgOR41rriMmMkzNsd0UoaxJRwetZdxIvtVk
 上海新闻综合(源4),https://live.264788.xyz/channel/shanghaixinwenzonghe?streamid=a064629942f561cf9f5a930648802197&livekey=01WgOR41rriMmMkzNsd0UoaxJRwetZdxIvtVk
 上海新闻综合(源5),webview://https://live.kankanews.com/huikan?id=2
-东方影视(源1),https://live.264788.xyz/channel/dongfangyingshi?streamid=6b0126f9b7bc4f48ba696eec5680e906&livekey=01WgOR41rriMmMkzNsd0UoaxJRwetZdxIvtVk
-东方影视(源2),https://live.264788.xyz/channel/dongfangyingshi?streamid=0995015e995fbffe5924ab43ff48f40f&livekey=01WgOR41rriMmMkzNsd0UoaxJRwetZdxIvtVk
-东方影视(源3),https://live.264788.xyz/channel/dongfangyingshi?streamid=4119308d25ef60295b2aa8f2898e3e31&livekey=01WgOR41rriMmMkzNsd0UoaxJRwetZdxIvtVk
-东方影视(源4),https://live.264788.xyz/channel/dongfangyingshi?streamid=c016ecf40cfad98bdb2f24dae2067863&livekey=01WgOR41rriMmMkzNsd0UoaxJRwetZdxIvtVk
 第一财经(源1),https://live.264788.xyz/channel/diyicaijing?streamid=50d4da670b986b3815f3797d1ffe0c6e&livekey=01WgOR41rriMmMkzNsd0UoaxJRwetZdxIvtVk
 第一财经(源2),https://live.264788.xyz/channel/diyicaijing?streamid=3c6cb6f00aa32febab803c0b2304d5d0&livekey=01WgOR41rriMmMkzNsd0UoaxJRwetZdxIvtVk
 第一财经(源3),https://live.264788.xyz/channel/diyicaijing?streamid=9c40de9ef5c8cdf9cc21d6ad9e6b9d76&livekey=01WgOR41rriMmMkzNsd0UoaxJRwetZdxIvtVk
@@ -590,9 +575,6 @@ CCTV-女性时尚,http://204.12.221.218:8181/3m1080p/nxss.m3u8
 龙华戏剧,https://8.fast.hidns.vip/163189/lhxj
 龙华洋片,https://8.fast.hidns.vip/163189/lhyp
 龙华卡通,https://8.fast.hidns.vip/163189/lhkt
-淘剧场(源1),http://36.110.54.118:866/hls/20/index.m3u8
-淘剧场(源2),http://mingjd.cn:7077/udp/239.3.1.95:8001$北京联通
-淘电影,http://mingjd.cn:7077/rtp/239.3.1.250:8001$北京联通
 淘娱乐,http://mingjd.cn:7077/udp/239.3.1.100:8001$北京联通
 淘Baby,http://mingjd.cn:7077/udp/239.3.1.238:8001$北京联通
 淘萌宠,http://mingjd.cn:7077/udp/239.3.1.102:8001$北京联通
@@ -600,9 +582,7 @@ CCTV-女性时尚,http://204.12.221.218:8181/3m1080p/nxss.m3u8
 CHC动作电影,http://120.238.94.82:9901/tsfile/live/1052_1.m3u8
 CHC家庭影院(源1),http://120.238.84.45:9901/tsfile/live/1093_1.m3u8?key=txiptv&playlive=1&authid=0
 CHC家庭影院(源2),http://63.141.230.178:82/gslb/zbdq5.m3u8?id=chcjt
-电影娱乐,https://live-auth.51kandianshi.com/szgd/csztv4.m3u8
 绍兴影视,http://live.shaoxing.com.cn/video/s10001-sxtv3/index.m3u8
-电影-广告多按几次OK,http://38.75.136.137:98/gslb/dsdqpub/lbssdy.m3u8?auth=testpub
 武侠-广告多按几次OK,http://38.75.136.137:98/gslb/dsdqpub/lbsswx.m3u8?auth=testpub
 动作-广告多按几次OK,http://38.75.136.137:98/gslb/dsdqpub/lbssdz.m3u8?auth=testpub
 喜剧-广告多按几次OK,http://38.75.136.137:98/gslb/dsdqpub/lbssxj.m3u8?auth=testpub
@@ -1034,8 +1014,6 @@ CGTN,http://113.98.11.46:3000/609017205
 武术世界,http://113.98.11.46:3000/958475359
 快乐垂钓,http://113.98.11.46:3000/961930263
 建党105周年巡礼,http://113.98.11.46:3000/713600957
-经典香港电影,http://113.98.11.46:3000/625703337
-新片放映厅,http://113.98.11.46:3000/619495952
 CHC影迷电影,http://113.98.11.46:3000/952383261
 CHC动作电影,http://113.98.11.46:3000/644368714
 CHC家庭影院,http://113.98.11.46:3000/644368373
@@ -1234,7 +1212,6 @@ CCTV兵器,http://120.238.84.45:9901/tsfile/live/1096_1.m3u8?key=txiptv&playlive
 梅州导视,http://120.238.84.45:9901/tsfile/live/1006_1.m3u8?key=txiptv&playlive=1&authid=0
 广东新闻,http://120.238.84.45:9901/tsfile/live/1010_1.m3u8?key=txiptv&playlive=1&authid=0
 广东公共,http://120.238.84.45:9901/tsfile/live/1011_1.m3u8?key=txiptv&playlive=1&authid=0
-都市剧场,http://120.238.84.45:9901/tsfile/live/1002_1.m3u8?key=txiptv&playlive=1&authid=0
 广东经济,http://120.238.84.45:9901/tsfile/live/1014_1.m3u8?key=txiptv&playlive=1&authid=0
 大湾区卫视,http://120.238.84.45:9901/tsfile/live/1015_1.m3u8?key=txiptv&playlive=1&authid=0
 广东影视,http://120.238.84.45:9901/tsfile/live/1016_1.m3u8?key=txiptv&playlive=1&authid=0
@@ -1245,7 +1222,6 @@ CCTV兵器,http://120.238.84.45:9901/tsfile/live/1096_1.m3u8?key=txiptv&playlive
 炫动卡通,http://120.238.84.45:9901/tsfile/live/1037_1.m3u8?key=txiptv&playlive=1&authid=0
 嘉佳卡通,http://120.238.84.45:9901/tsfile/live/1038_1.m3u8?key=txiptv&playlive=1&authid=0
 少儿动画,http://120.238.84.45:9901/tsfile/live/1039_1.m3u8?key=txiptv&playlive=1&authid=0
-经典电影,http://120.238.84.45:9901/tsfile/live/1040_1.m3u8?key=txiptv&playlive=1&authid=0
 谍战剧场,http://120.238.84.45:9901/tsfile/live/1042_1.m3u8?key=txiptv&playlive=1&authid=0
 📺联通专区,#genre#
 CCTV1,http://120.76.248.139/live/bfgd/4200000488.m3u8
@@ -1809,7 +1785,6 @@ CCTV女时尚,http://38.75.136.137:98/gslb/dsdqpub/nxss.m3u8?auth=testpub
 教科影视(源1),http://ali-m-l.cztv.com/channels/lantian/channel004/1080p.m3u8
 教科影视(源2),https://ali-m-l.cztv.com/channels/lantian/channel004/1080p.m3u8
 教科影视(源3),http://ali-m-l.cztv.com/channels/lantian/channel04/1080p.m3u8
-影视娱乐,http://ali-m-l.cztv.com/channels/lantian/channel005/1080p.m3u8
 民生休闲(源1),http://ali-m-l.cztv.com/channels/lantian/channel006/1080p.m3u8
 民生休闲(源2),https://ali-m-l.cztv.com/channels/lantian/channel006/1080p.m3u8
 民生休闲(源3),http://ali-m-l.cztv.com/channels/lantian/channel06/1080p.m3u8
@@ -2117,7 +2092,6 @@ CCTV女时尚,http://38.75.136.137:98/gslb/dsdqpub/nxss.m3u8?auth=testpub
 新纪实(源2),http://bp-resource-dfl.bestv.cn/155/3/video.m3u8
 爱上海,http://bp-resource-dfl.bestv.cn/148/3/video.m3u8
 上海新闻(源2),https://live.264788.xyz/channel/shanghaixinwenzonghe?streamid=b42305d47a7ea7de356f6b9953dd63fb&livekey=01WgOR41rriMmMkzNsd0UoaxJRwetZdxIvtVk
-东方影视,https://live.264788.xyz/channel/dongfangyingshi?streamid=6b0126f9b7bc4f48ba696eec5680e906&livekey=01WgOR41rriMmMkzNsd0UoaxJRwetZdxIvtVk
 五星体育(源2),https://live.264788.xyz/channel/wuxingtiyu?streamid=86a2efa09c42c8f425082fc405958019&livekey=01WgOR41rriMmMkzNsd0UoaxJRwetZdxIvtVk
 上海都市(源1),https://live.264788.xyz/channel/shanghaidushi?streamid=66feaac0153fda6d6dce43f793c0ae59&livekey=01WgOR41rriMmMkzNsd0UoaxJRwetZdxIvtVk
 上海都市(源2),http://180.165.12.42:50001/tsfile/live/0001_18.m3u8?key=txiptv&playlive=1&authid=0
@@ -2168,8 +2142,6 @@ CCTV女时尚,http://38.75.136.137:98/gslb/dsdqpub/nxss.m3u8?auth=testpub
 延庆,http://route.079915.xyz:4022/rtp/239.3.1.187:8001
 爱上4K,http://route.079915.xyz:4022/rtp/239.3.1.236:2000
 4K超清,http://route.079915.xyz:4022/rtp/239.3.1.249:8001
-淘电影,http://route.079915.xyz:4022/rtp/239.3.1.250:8001
-淘剧场,http://route.079915.xyz:4022/rtp/239.3.1.95:8001
 淘娱乐,http://route.079915.xyz:4022/rtp/239.3.1.100:8001
 淘baby,http://route.079915.xyz:4022/rtp/239.3.1.238:8001
 萌宠TV,http://route.079915.xyz:4022/rtp/239.3.1.102:8001
@@ -2183,7 +2155,6 @@ CCTV女时尚,http://38.75.136.137:98/gslb/dsdqpub/nxss.m3u8?auth=testpub
 经典,http://route.079915.xyz:4022/rtp/239.3.1.195:9024
 📡其他地方,#genre#
 藏语卫视,http://123.207.224.130:123/xizang/xizang.php?id=xzzy
-影视文化,http://123.207.224.130:123/xizang/xizang.php?id=xzys
 拉萨综合,rtmp://tv.lasatv.cn/channellive/lszhpd
 拉萨藏语,rtmp://tv.lasatv.cn/channellive/lszypd
 拉萨文旅,rtmp://tv.lasatv.cn/channellive/lswlpd
