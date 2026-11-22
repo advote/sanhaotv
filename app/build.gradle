@@ -101,7 +101,10 @@ android {
             minifyEnabled false
         }
         release {
-            minifyEnabled true
+            minifyEnabled false
+            // 三好TV：release 版使用与 debug 版相同的 keystore 签名，
+            // 保证已安装用户可以直接覆盖升级（签名不一致会被系统拒绝安装）
+            signingConfig signingConfigs.debug
         }
     }
 
