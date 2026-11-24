@@ -95,29 +95,43 @@ public final class RemoteSourceHelper {
 
     /** 三好TV：云端更新检测的最小间隔（6 小时）。间隔内锁屏/解锁恢复不重新下载源文件。 */
     private static final long CHECK_INTERVAL_MS = 6L * 60L * 60L * 1000L;
-    /** 三好TV：上次云端更新检测的时间戳（墙钟）。 */
+    /**
+     * 三好TV：上次云端更新检测的时刻（单调时钟 SystemClock.elapsedRealtime）。
+     * 绝不使用 System.currentTimeMillis()：设备系统时间一旦被改小/倒退，
+     * 时间差判断就会失效，导致每次锁屏冷启动都重复检测并重新下载源文件。
+     */
     public static final String KEY_LAST_CHECK_TIME = "sanhao_last_check_time";
+    /** 三好TV：是否已完成过首次检测（持久化；未设置时视为首次启动）。 */
+    public static final String KEY_HAS_CHECKED_ONCE = "sanhao_has_checked_once";
     /** 三好TV：本进程是否已做过更新检测（进程内去重）。 */
     private static volatile boolean sCheckedThisProcess = false;
 
     public static void syncOnStartup() {
-        // 三好TV：手机端锁屏后进程常被系统回收，解锁回来等于一次冷启动，
-        // 会再次走到这里。绝不能每次都重新检测并重下直播/点播源：
-        // 1) 同一进程生命周期内只检测一次；
-        // 2) 距上次检测不足 CHECK_INTERVAL_MS 的（跨进程也生效）直接跳过，
-        //    一律使用本地缓存 / APK 内置文件。
+        // 三好TV：严格按用户要求控制检测下载：
+        //   规则 1 —— 只在第一次启动时检测并下载；
+        //   规则 2 —— 之后的检测必须与上一次间隔 >= 6 小时，间隔内一律用本地文件。
+        // 时间一律用单调时钟 elapsedRealtime（设备重启会归零，归零后视为新周期，
+        // 重新计算首次），绝不受用户可修改的系统时间影响。
         if (sCheckedThisProcess) {
             LOG.i(TAG + " update check skipped: already checked in this process");
             return;
         }
         sCheckedThisProcess = true;
+        long now = android.os.SystemClock.elapsedRealtime();
+        boolean checkedOnce = Hawk.get(KEY_HAS_CHECKED_ONCE, false);
         long lastCheck = Hawk.get(KEY_LAST_CHECK_TIME, 0L);
-        long now = System.currentTimeMillis();
-        if (lastCheck > 0 && now > lastCheck && now - lastCheck < CHECK_INTERVAL_MS) {
-            LOG.i(TAG + " update check skipped: last check too recent");
+
+        // 已检测过、且本次距上次不足 6 小时 → 跳过。
+        // 注意 elapsedRealtime 在设备重启后会归零，此时 now < lastCheck，
+        // 视为全新的开机周期，允许再检测一次（新周期的“首次”）。
+        if (checkedOnce && now >= lastCheck && (now - lastCheck) < CHECK_INTERVAL_MS) {
+            LOG.i(TAG + " update check skipped: only-once / within 6h interval");
             return;
         }
+        // 通过关卡：立即落标记再检测，确保即使检测失败/超时，6 小时内也不会重复触发。
+        Hawk.put(KEY_HAS_CHECKED_ONCE, true);
         Hawk.put(KEY_LAST_CHECK_TIME, now);
+        LOG.i(TAG + " update check allowed: first launch or 6h elapsed");
         // 三好TV：整体硬限时 15 秒。网络差（DNS 失败 / TLS 抖动）时 HTTP 超时
         // 会层层叠加，把启动等待页拖到几十秒；超时后放弃检测，直播与点播
         // 直接读取本地缓存或 APK 内置文件，绝不阻塞启动。
