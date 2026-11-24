@@ -1238,7 +1238,9 @@ public class VodController extends BaseController {
 
     public void updateDanmuBtn() {
         if (mDanmuSettingBtn == null) return;
-        mDanmuSettingBtn.setVisibility(DanmuHelper.isOpen() ? VISIBLE : GONE);
+        // 三好TV：弹幕开关已移入弹幕设置面板，此处必须常驻显示入口，
+        // 否则关闭弹幕后用户无法再次打开面板重新开启弹幕。
+        mDanmuSettingBtn.setVisibility(VISIBLE);
         updatePlayLabelVisibility();
     }
 

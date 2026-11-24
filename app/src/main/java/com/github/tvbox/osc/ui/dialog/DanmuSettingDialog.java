@@ -27,12 +27,33 @@ public class DanmuSettingDialog extends BaseDialog {
     public DanmuSettingDialog(@NonNull @NotNull Context context) {
         super(context);
         setContentView(R.layout.dialog_danmu_setting);
+        initOpenSwitch();
         initDanmuSearch();
         initColor();
         initSpeed();
         initSize();
         initLine();
         initAlpha();
+    }
+
+    /**
+     * 三好TV：弹幕总开关。与设置页的「弹幕开启/关闭」共用同一状态（DanmuHelper.isOpen），
+     * 切换后立即通知播放器生效：关闭时隐藏并停止加载弹幕，开启时重新加载当前弹幕。
+     */
+    private void initOpenSwitch() {
+        TextView openSwitch = findViewById(R.id.danmuOpenSwitch);
+        refreshOpenSwitch(openSwitch);
+        openSwitch.setOnClickListener(v -> {
+            FastClickCheckUtil.check(v);
+            boolean open = !DanmuHelper.isOpen();
+            DanmuHelper.setOpen(open);
+            refreshOpenSwitch(openSwitch);
+            EventBus.getDefault().post(new RefreshEvent(RefreshEvent.TYPE_SET_DANMU_SETTINGS, open));
+        });
+    }
+
+    private void refreshOpenSwitch(TextView view) {
+        view.setText(DanmuHelper.isOpen() ? "开启" : "关闭");
     }
 
     private void initDanmuSearch() {

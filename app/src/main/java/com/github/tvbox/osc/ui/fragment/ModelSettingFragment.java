@@ -47,10 +47,6 @@ import com.github.tvbox.osc.util.OkGoHelper;
 import com.github.tvbox.osc.util.PanAuthHelper;
 import com.github.tvbox.osc.util.PlayerHelper;
 import com.github.tvbox.osc.viewmodel.SourceViewModel;
-import com.lzy.okgo.OkGo;
-import com.lzy.okgo.callback.FileCallback;
-import com.lzy.okgo.model.Progress;
-import com.lzy.okgo.model.Response;
 import com.orhanobut.hawk.Hawk;
 import com.hjq.permissions.OnPermissionCallback;
 import com.hjq.permissions.Permission;
@@ -110,6 +106,16 @@ public class ModelSettingFragment extends BaseLazyFragment {
 
     public ModelSettingFragment setArguments() {
         return this;
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        // 三好TV：弹幕开关也可在播放页的「弹幕设置」面板中切换，
+        // 返回本页时同步刷新文字，避免显示滞后。
+        if (tvDanmuOpenText != null) {
+            tvDanmuOpenText.setText(DanmuHelper.isOpen() ? "开启" : "关闭");
+        }
     }
 
     @Override
@@ -230,39 +236,8 @@ public class ModelSettingFragment extends BaseLazyFragment {
                 dialog.show();
             }
         });
-        findViewById(R.id.llWp).setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                FastClickCheckUtil.check(v);
-                if (!ApiConfig.get().wallpaper.isEmpty())
-                    OkGo.<File>get(ApiConfig.get().wallpaper).execute(new FileCallback(requireActivity().getFilesDir().getAbsolutePath(), "wp") {
-                        @Override
-                        public void onSuccess(Response<File> response) {
-                            ((BaseActivity) requireActivity()).changeWallpaper(true);
-                        }
-
-                        @Override
-                        public void onError(Response<File> response) {
-                            super.onError(response);
-                        }
-
-                        @Override
-                        public void downloadProgress(Progress progress) {
-                            super.downloadProgress(progress);
-                        }
-                    });
-            }
-        });
-        findViewById(R.id.llWpRecovery).setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                FastClickCheckUtil.check(v);
-                File wp = new File(requireActivity().getFilesDir().getAbsolutePath() + "/wp");
-                if (wp.exists())
-                    wp.delete();
-                ((BaseActivity) requireActivity()).changeWallpaper(true);
-            }
-        });
+        // 三好TV：壁纸设置（换张壁纸 / 重置壁纸）已移除，入口在 fragment_model.xml 中整组隐藏。
+        // 这里不再注册点击事件，避免布局变动后残留无效逻辑。
         findViewById(R.id.llHomeApi).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {

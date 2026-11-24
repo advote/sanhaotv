@@ -26,6 +26,37 @@
             android:textSize="@dimen/ts_26"
             android:textStyle="bold" />
 
+        <!-- 三好TV：弹幕总开关，直接控制弹幕显示 / 关闭 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="@dimen/vs_8"
+            android:orientation="horizontal"
+            android:paddingTop="@dimen/vs_5"
+            android:paddingBottom="@dimen/vs_5">
+
+            <TextView
+                android:layout_width="@dimen/vs_120"
+                android:layout_height="@dimen/vs_50"
+                android:gravity="center_vertical|right"
+                android:text="弹幕开关"
+                android:textColor="@color/dialog_text_primary"
+                android:textSize="@dimen/ts_20" />
+
+            <TextView
+                android:id="@+id/danmuOpenSwitch"
+                android:layout_width="0dp"
+                android:layout_height="@dimen/vs_50"
+                android:layout_marginStart="@dimen/vs_20"
+                android:layout_weight="1"
+                android:background="@drawable/button_danmu_setting"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="开启"
+                android:textColor="@color/dialog_text_primary"
+                android:textSize="@dimen/ts_20" />
+        </LinearLayout>
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
