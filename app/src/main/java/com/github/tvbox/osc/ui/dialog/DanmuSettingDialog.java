@@ -39,6 +39,7 @@ public class DanmuSettingDialog extends BaseDialog {
     /**
      * 三好TV：弹幕总开关。与设置页的「弹幕开启/关闭」共用同一状态（DanmuHelper.isOpen），
      * 切换后立即通知播放器生效：关闭时隐藏并停止加载弹幕，开启时重新加载当前弹幕。
+     * 按钮文字为「动作」而非状态：当前有弹幕显示「关弹幕」，无弹幕显示「开弹幕」。
      */
     private void initOpenSwitch() {
         TextView openSwitch = findViewById(R.id.danmuOpenSwitch);
@@ -52,8 +53,9 @@ public class DanmuSettingDialog extends BaseDialog {
         });
     }
 
+    /** 有弹幕 → 提示「关弹幕」；无弹幕 → 提示「开弹幕」。 */
     private void refreshOpenSwitch(TextView view) {
-        view.setText(DanmuHelper.isOpen() ? "开启" : "关闭");
+        view.setText(DanmuHelper.isOpen() ? "关弹幕" : "开弹幕");
     }
 
     private void initDanmuSearch() {
