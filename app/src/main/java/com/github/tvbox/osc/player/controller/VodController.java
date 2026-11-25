@@ -364,7 +364,8 @@ public class VodController extends BaseController {
         mAudioTrackBtn = findViewById(R.id.audio_track_select);
         mVideoTrackBtn = findViewById(R.id.video_track_select);
         mDanmuSettingBtn = findViewById(R.id.danmu_setting);
-        mDanmuSearchUiBtn = findViewById(R.id.danmu_search_ui);
+        // 三好TV：「弹幕(牛)/搜弹幕」按钮已从布局彻底删除，此处不再持有引用。
+        mDanmuSearchUiBtn = null;
         mLandscapePortraitBtn = findViewById(R.id.landscape_portrait);
         backBtn = findViewById(R.id.tv_back);
         seekTime = findViewById(R.id.tv_seek_time);
@@ -917,21 +918,7 @@ public class VodController extends BaseController {
                 return true;
             }
         });
-        mDanmuSearchUiBtn.setOnClickListener(new OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                listener.searchDanmuUi(false);
-                hideBottom();
-            }
-        });
-        setOnTvLongClickListener(mDanmuSearchUiBtn, new OnLongClickListener() {
-            @Override
-            public boolean onLongClick(View view) {
-                listener.searchDanmuUi(true);
-                hideBottom();
-                return true;
-            }
-        });
+        // 三好TV：「弹幕(牛)/搜弹幕」按钮已删除，不再注册点击/长按事件。
         mLandscapePortraitBtn.setOnClickListener(new OnClickListener() {
             @Override
             public void onClick(View view) {
@@ -1121,7 +1108,7 @@ public class VodController extends BaseController {
             mAudioTrackBtn.setVisibility(GONE);
             mVideoTrackBtn.setVisibility(GONE);
             mDanmuSettingBtn.setVisibility(GONE);
-            mDanmuSearchUiBtn.setVisibility(GONE);
+            // 三好TV：「弹幕(牛)/搜弹幕」按钮已删除，此处不再操作。
             mScreenDisplay.setVisibility(GONE);
             return;
         }
@@ -1244,11 +1231,10 @@ public class VodController extends BaseController {
         updatePlayLabelVisibility();
     }
 
+    /** 三好TV：「弹幕(牛)/搜弹幕」按钮已彻底删除，保留空方法以兼容既有调用点。 */
     public void updateDanmuSearchUiBtn() {
-        if (mDanmuSearchUiBtn == null) return;
-        boolean hasDanmuSearchUi = ApiConfig.get().hasDanmuSearchUi();
-        mDanmuSearchUiBtn.setVisibility(hasDanmuSearchUi ? VISIBLE : GONE);
-        updatePlayLabelVisibility();
+        // 按钮节点已从 player_vod_control_view.xml 移除，mDanmuSearchUiBtn 恒为 null，
+        // 第三方接口包的 hasDanmuSearchUi() 不再能把它显示出来。
     }
 
     private void updatePlayLabelVisibility() {
