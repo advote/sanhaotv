@@ -4,7 +4,7 @@
   "video": "https://raw.githubusercontent.com/advote/sanhaotv/main/video_source.json",
   "live": "https://raw.githubusercontent.com/advote/sanhaotv/main/live_source.txt",
   "video_version": 2026112005,
-  "live_version": 2026112007,
+  "live_version": 2026112008,
   "urls": [
     "https://raw.githubusercontent.com/advote/sanhaotv/main/video_source.json"
   ],
