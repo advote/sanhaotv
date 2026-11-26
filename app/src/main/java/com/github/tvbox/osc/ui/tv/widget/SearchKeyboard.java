@@ -141,18 +141,6 @@ public class SearchKeyboard extends FrameLayout {
         }
     }
 
-    /**
-     * 三好TV：允许使用方改写左上角功能键文案（点播搜索页默认仍是「远程搜索」）。
-     * 直播频道搜索把它改成「播放首个」，方便遥控器一键播放首条匹配结果。
-     */
-    public void setFunctionKeyLabel(String label) {
-        if (label == null || label.length() == 0 || keyboardList.isEmpty()) return;
-        keyboardList.get(0).setKey(label);
-        if (mRecyclerView != null && mRecyclerView.getAdapter() != null) {
-            mRecyclerView.getAdapter().notifyItemChanged(0);
-        }
-    }
-
     public void setOnSearchKeyListener(OnSearchKeyListener listener) {
         searchKeyListener = listener;
     }

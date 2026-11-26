@@ -13,16 +13,12 @@ import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.CountDownTimer;
 import android.os.Handler;
-import android.text.Editable;
 import android.text.TextUtils;
-import android.text.TextWatcher;
 import android.util.Base64;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.inputmethod.EditorInfo;
-import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -59,10 +55,8 @@ import com.github.tvbox.osc.ui.adapter.LiveSettingGroupAdapter;
 import com.github.tvbox.osc.ui.adapter.LiveSettingItemAdapter;
 import com.github.tvbox.osc.ui.adapter.MyEpgAdapter;
 import com.github.tvbox.osc.ui.dialog.LivePasswordDialog;
-import com.github.tvbox.osc.ui.tv.widget.SearchKeyboard;
 import com.github.tvbox.osc.ui.tv.widget.ViewObj;
 import com.github.tvbox.osc.util.DefaultConfig;
-import com.github.tvbox.osc.util.LiveChannelPinyin;
 import com.github.tvbox.osc.util.EpgUtil;
 import com.github.tvbox.osc.util.FastClickCheckUtil;
 import com.github.tvbox.osc.util.HawkConfig;
@@ -142,21 +136,6 @@ public class LivePlayActivity extends BaseActivity {
     private TvRecyclerView mLiveChannelView;
     private LiveChannelGroupAdapter liveChannelGroupAdapter;
     private LiveChannelItemAdapter liveChannelItemAdapter;
-
-    // 三好TV：直播列表顶部搜索框 / TV 字母键盘 / 跨分组搜索结果
-    private EditText etLiveSearch;
-    private TextView tvLiveSearchTip;
-    private View tvLiveSearchClear;
-    private View liveSearchKeyboardPanel;
-    private SearchKeyboard liveSearchKeyboard;
-    private View tvLiveSearchKbClear;
-    private View tvLiveSearchKbClose;
-    private boolean liveSearchMode = false;
-    private boolean liveSearchUpdating = false;
-    private final ArrayList<Integer> liveSearchGroupIndexes = new ArrayList<>();
-    private final ArrayList<Integer> liveSearchChannelIndexes = new ArrayList<>();
-    private final ArrayList<String> liveSearchLabels = new ArrayList<>();
-    private final ArrayList<LiveChannelItem> liveSearchItems = new ArrayList<>();
 
     private LinearLayout tvRightSettingLayout;
     private TvRecyclerView mSettingGroupView;
@@ -447,289 +426,8 @@ public class LivePlayActivity extends BaseActivity {
         initSettingItemView();
         initLiveChannelList();
         initLiveSettingGroupList();
-        initLiveSearchBar();
         Hawk.put(HawkConfig.PLAYER_IS_LIVE,true);
     }
-
-    /* ==================== 三好TV：直播列表顶部搜索框 ====================
-     * 只认字母/数字，不做中文输入、中文分词、拼音全拼。
-     * 汉字频道名取拼音首字母组成索引串：湖南卫视 -> HNWS，输 hn 即命中；
-     * CCTV1 综合 -> CCTV1ZH，输 cc 即命中。前缀命中优先排在结果前面。
-     * ================================================================== */
-
-    private void initLiveSearchBar() {
-        etLiveSearch = findViewById(R.id.et_live_search);
-        tvLiveSearchTip = findViewById(R.id.tv_live_search_tip);
-        tvLiveSearchClear = findViewById(R.id.tv_live_search_clear);
-        liveSearchKeyboardPanel = findViewById(R.id.live_search_keyboard_panel);
-        liveSearchKeyboard = findViewById(R.id.live_search_keyboard);
-        tvLiveSearchKbClear = findViewById(R.id.tv_live_search_kb_clear);
-        tvLiveSearchKbClose = findViewById(R.id.tv_live_search_kb_close);
-        liveSearchKeyboard.setFunctionKeyLabel("播放首个");
-
-        etLiveSearch.addTextChangedListener(new TextWatcher() {
-            @Override
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
-            }
-
-            @Override
-            public void onTextChanged(CharSequence s, int start, int before, int count) {
-            }
-
-            @Override
-            public void afterTextChanged(Editable s) {
-                if (liveSearchUpdating) return;
-                applyLiveSearch(s == null ? "" : s.toString());
-            }
-        });
-
-        // 手机/模拟器点输入框直接用系统输入法；TV 遥控器按确认调出内置字母键盘
-        etLiveSearch.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                resetChannelListHideTimer();
-            }
-        });
-        etLiveSearch.setOnEditorActionListener(new TextView.OnEditorActionListener() {
-            @Override
-            public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
-                if (actionId == EditorInfo.IME_ACTION_DONE) {
-                    hideLiveSearchKeyboard(true);
-                    return true;
-                }
-                return false;
-            }
-        });
-        etLiveSearch.setOnKeyListener(new View.OnKeyListener() {
-            @Override
-            public boolean onKey(View v, int keyCode, KeyEvent event) {
-                if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
-                if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
-                    showLiveSearchKeyboard();
-                    return true;
-                }
-                if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-                    hideLiveSearchKeyboard(true);
-                    return true;
-                }
-                return false;
-            }
-        });
-
-        tvLiveSearchClear.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                clearLiveSearch();
-                resetChannelListHideTimer();
-            }
-        });
-        tvLiveSearchKbClear.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                clearLiveSearch();
-                focusLiveSearchKeyboard();
-            }
-        });
-        tvLiveSearchKbClose.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                hideLiveSearchKeyboard(true);
-            }
-        });
-
-        liveSearchKeyboard.setOnSearchKeyListener(new SearchKeyboard.OnSearchKeyListener() {
-            @Override
-            public void onSearchKey(int pos, String key) {
-                if (pos == 0) {
-                    playFirstLiveSearchResult();
-                    return;
-                }
-                String text = etLiveSearch.getText().toString();
-                if (pos == 1) {
-                    if (text.length() > 0) text = text.substring(0, text.length() - 1);
-                } else {
-                    text += key;
-                }
-                liveSearchUpdating = true;
-                etLiveSearch.setText(text);
-                etLiveSearch.setSelection(text.length());
-                liveSearchUpdating = false;
-                applyLiveSearch(text);
-            }
-        });
-    }
-
-    private void resetChannelListHideTimer() {
-        mHandler.removeCallbacks(mHideChannelListRun);
-        mHandler.postDelayed(mHideChannelListRun, postTimeout);
-    }
-
-    private boolean isLiveSearchKeyboardVisible() {
-        return liveSearchKeyboardPanel != null && liveSearchKeyboardPanel.getVisibility() == View.VISIBLE;
-    }
-
-    private void showLiveSearchKeyboard() {
-        if (liveSearchKeyboardPanel == null) return;
-        boolean needShowList = tvLeftChannelListLayout.getVisibility() != View.VISIBLE;
-        if (needShowList) showChannelList();
-        liveSearchKeyboardPanel.setVisibility(View.VISIBLE);
-        mHandler.removeCallbacks(mHideChannelListRun);
-        mHandler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                focusLiveSearchKeyboard();
-            }
-        }, needShowList ? 320 : 60);
-    }
-
-    private void hideLiveSearchKeyboard(boolean focusResult) {
-        if (liveSearchKeyboardPanel != null) liveSearchKeyboardPanel.setVisibility(View.GONE);
-        if (focusResult && liveSearchMode && !liveSearchItems.isEmpty()) {
-            focusFirstSearchResult();
-        } else {
-            resetChannelListHideTimer();
-        }
-    }
-
-    private void focusLiveSearchKeyboard() {
-        if (liveSearchKeyboard == null || !isLiveSearchKeyboardVisible()) return;
-        liveSearchKeyboard.post(new Runnable() {
-            @Override
-            public void run() {
-                View rv = liveSearchKeyboard.findViewById(R.id.mRecyclerView);
-                if (!(rv instanceof ViewGroup)) return;
-                ViewGroup vg = (ViewGroup) rv;
-                for (int i = 0; i < vg.getChildCount(); i++) {
-                    View child = vg.getChildAt(i);
-                    if (child.isFocusable()) {
-                        child.requestFocus();
-                        return;
-                    }
-                }
-            }
-        });
-    }
-
-    private void focusFirstSearchResult() {
-        mLiveChannelView.post(new Runnable() {
-            @Override
-            public void run() {
-                if (mLiveChannelView.isComputingLayout() || mLiveChannelView.isScrolling()) {
-                    mLiveChannelView.postDelayed(this, 50);
-                    return;
-                }
-                liveChannelItemAdapter.setFocusedChannelIndex(0);
-                focusRecyclerPosition(mLiveChannelView, 0);
-                resetChannelListHideTimer();
-            }
-        });
-    }
-
-    private void applyLiveSearch(String keyword) {
-        String key = keyword == null ? "" : keyword.trim();
-        if (key.length() == 0) {
-            clearLiveSearch();
-            return;
-        }
-        liveSearchItems.clear();
-        liveSearchLabels.clear();
-        liveSearchGroupIndexes.clear();
-        liveSearchChannelIndexes.clear();
-        // 第一遍收前缀命中（hn/cc），第二遍收中间包含，保证最快找到目标频道
-        for (int pass = 0; pass < 2; pass++) {
-            for (LiveChannelGroup group : liveChannelGroupList) {
-                if (group == null) continue;
-                ArrayList<LiveChannelItem> channels = getLiveChannels(group.getGroupIndex());
-                if (channels == null || channels.isEmpty()) continue;
-                for (LiveChannelItem item : channels) {
-                    if (item == null || TextUtils.isEmpty(item.getChannelName())) continue;
-                    boolean prefix = LiveChannelPinyin.startsWith(item.getChannelName(), key);
-                    if (pass == 0) {
-                        if (!prefix) continue;
-                    } else {
-                        if (prefix || !LiveChannelPinyin.matches(item.getChannelName(), key)) continue;
-                    }
-                    liveSearchItems.add(item);
-                    liveSearchGroupIndexes.add(group.getGroupIndex());
-                    liveSearchChannelIndexes.add(item.getChannelIndex());
-                    liveSearchLabels.add(item.getChannelName() + "  ·  " + group.getGroupName());
-                }
-            }
-        }
-        liveSearchMode = true;
-        mLastChannelGroupIndex = -1;
-        mLastChannelList = new ArrayList<>();
-        liveChannelItemAdapter.setDisplayLabels(new ArrayList<>(liveSearchLabels));
-        liveChannelItemAdapter.setNewData(new ArrayList<>(liveSearchItems));
-        liveChannelItemAdapter.setSelectedChannelIndex(-1);
-        liveChannelItemAdapter.setFocusedChannelIndex(-1);
-        mLiveChannelView.scrollToPosition(0);
-        mLiveChannelView.setSelection(0);
-        tvLiveSearchTip.setText(liveSearchItems.isEmpty() ? "无结果" : "共 " + liveSearchItems.size() + " 个");
-        resetChannelListHideTimer();
-    }
-
-    private void clearLiveSearch() {
-        boolean wasSearching = liveSearchMode;
-        liveSearchMode = false;
-        liveSearchItems.clear();
-        liveSearchLabels.clear();
-        liveSearchGroupIndexes.clear();
-        liveSearchChannelIndexes.clear();
-        liveChannelItemAdapter.setDisplayLabels(null);
-        if (etLiveSearch != null && etLiveSearch.getText().length() > 0) {
-            liveSearchUpdating = true;
-            etLiveSearch.setText("");
-            liveSearchUpdating = false;
-        }
-        if (tvLiveSearchTip != null) tvLiveSearchTip.setText("");
-        if (wasSearching) {
-            mLastChannelGroupIndex = -1;
-            mLastChannelList = new ArrayList<>();
-            int groupIndex = liveChannelGroupAdapter.getSelectedGroupIndex();
-            if (groupIndex < 0 || groupIndex >= liveChannelGroupList.size())
-                groupIndex = currentChannelGroupIndex;
-            if (groupIndex >= 0 && groupIndex < liveChannelGroupList.size()) {
-                liveChannelItemAdapter.setNewData(getLiveChannels(groupIndex));
-                liveChannelItemAdapter.setSelectedChannelIndex(groupIndex == currentChannelGroupIndex ? currentLiveChannelIndex : -1);
-            }
-        }
-    }
-
-    private void playFirstLiveSearchResult() {
-        if (!liveSearchMode || liveSearchItems.isEmpty()) {
-            Toast.makeText(App.getInstance(), "没有匹配的频道", Toast.LENGTH_SHORT).show();
-            resetChannelListHideTimer();
-            return;
-        }
-        hideLiveSearchKeyboard(false);
-        clickLiveChannelFromList(0);
-    }
-
-    /** 列表项点击：搜索态用原始分组+组内序号播放，普通态保持原有逻辑。 */
-    private void clickLiveChannelFromList(int position) {
-        if (tvLeftChannelListLayout.getVisibility() == View.VISIBLE) {
-            mHandler.removeCallbacks(mHideChannelListRun);
-            mHandler.postDelayed(mHideChannelListRun, postTimeout);
-        }
-        if (liveSearchMode) {
-            if (position < 0 || position >= liveSearchGroupIndexes.size()) return;
-            int groupIndex = liveSearchGroupIndexes.get(position);
-            int channelIndex = liveSearchChannelIndexes.get(position);
-            clearLiveSearch();
-            hideLiveSearchKeyboard(false);
-            if (isNeedInputPassword(groupIndex)) {
-                showPasswordDialog(groupIndex, channelIndex);
-                return;
-            }
-            loadChannelGroupDataAndPlay(groupIndex, channelIndex);
-            mHandler.removeCallbacks(mHideChannelListRun);
-            mHandler.post(mHideChannelListRun);
-            return;
-        }
-        playChannel(liveChannelGroupAdapter.getSelectedGroupIndex(), position, false);
-    }
-
     //获取EPG并存储 // 百川epg  DIYP epg   51zmt epg ------- 自建EPG格式输出格式请参考 51zmt
     private List<Epginfo> epgdata = new ArrayList<>();
 
@@ -1530,18 +1228,6 @@ public class LivePlayActivity extends BaseActivity {
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
         int keyCode = event.getKeyCode();
-        // 三好TV：字母键盘打开时方向键只作用于键盘，避免误触换台或收起列表
-        if (isLiveSearchKeyboardVisible()) {
-            if (event.getAction() == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_BACK) {
-                hideLiveSearchKeyboard(true);
-                return true;
-            }
-            return super.dispatchKeyEvent(event);
-        }
-        if (event.getAction() == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_SEARCH) {
-            showLiveSearchKeyboard();
-            return true;
-        }
         if (event.getAction() == KeyEvent.ACTION_DOWN) {
             if (tvLeftChannelListLayout.getVisibility() == View.VISIBLE) {
                 if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && isFocusInView(mChannelGroupView)) {
@@ -1671,8 +1357,6 @@ public class LivePlayActivity extends BaseActivity {
         mHandler.removeCallbacks(mLoadEpgRun);
         mHandler.removeCallbacks(mUpdateResolutionInfoRun);
         mHandler.removeCallbacks(mHideResolutionInfoRun);
-        if (liveSearchKeyboardPanel != null) liveSearchKeyboardPanel.setVisibility(View.GONE);
-        liveSearchMode = false;
     }
 
     private void showChannelList() {
@@ -1706,7 +1390,6 @@ public class LivePlayActivity extends BaseActivity {
     private List<LiveChannelItem> mLastChannelList = new ArrayList<>();
 
     private void refreshChannelList(int currentChannelGroupIndex) {
-        if (liveSearchMode) clearLiveSearch();
         List<LiveChannelItem> newChannels = getLiveChannels(currentChannelGroupIndex);
         // 2. 判断数据是否变化
         if (currentChannelGroupIndex == mLastChannelGroupIndex
@@ -1842,7 +1525,6 @@ public class LivePlayActivity extends BaseActivity {
     }
 
     private void focusChannelFromSelectedGroup() {
-        if (liveSearchMode) clearLiveSearch();
         int groupIndex = liveChannelGroupAdapter.getSelectedGroupIndex();
         if (groupIndex < 0) groupIndex = currentChannelGroupIndex;
         if (groupIndex < 0 || groupIndex >= liveChannelGroupList.size()) return;
@@ -1868,13 +1550,6 @@ public class LivePlayActivity extends BaseActivity {
     private Runnable mHideChannelListRun = new Runnable() {
         @Override
         public void run() {
-            // 三好TV：字母键盘打开时保持列表可见，不打断输入
-            if (isLiveSearchKeyboardVisible()) {
-                resetChannelListHideTimer();
-                return;
-            }
-            if (liveSearchMode) clearLiveSearch();
-            if (liveSearchKeyboardPanel != null) liveSearchKeyboardPanel.setVisibility(View.GONE);
             ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams) tvLeftChannelListLayout.getLayoutParams();
             if (tvLeftChannelListLayout.getVisibility() == View.VISIBLE) {
                 ViewObj viewObj = new ViewObj(tvLeftChannelListLayout, params);
@@ -2729,7 +2404,6 @@ public class LivePlayActivity extends BaseActivity {
     }
 
     private void selectChannelGroup(int groupIndex, boolean focus, int liveChannelIndex) {
-        if (liveSearchMode) clearLiveSearch();
         if (focus && tvLeftChannelListLayout.getVisibility() != View.VISIBLE) return;
         mLastChannelGroupIndex=groupIndex;
         if (focus) {
@@ -2800,7 +2474,7 @@ public class LivePlayActivity extends BaseActivity {
 
             @Override
             public void onItemClick(TvRecyclerView parent, View itemView, int position) {
-                clickLiveChannelFromList(position);
+                clickLiveChannel(position);
             }
         });
 
@@ -2810,7 +2484,7 @@ public class LivePlayActivity extends BaseActivity {
             public void onItemClick(BaseQuickAdapter adapter, View view, int position) {
                 FastClickCheckUtil.check(view);
                 liveChannelItemAdapter.setSelectedChannelIndex(position);
-                clickLiveChannelFromList(position);
+                clickLiveChannel(position);
             }
         });
     }
@@ -3617,7 +3291,6 @@ public class LivePlayActivity extends BaseActivity {
     }
 
     private void loadChannelGroupData(int groupIndex) {
-        if (liveSearchMode) clearLiveSearch();
         liveChannelItemAdapter.setNewData(getLiveChannels(groupIndex));
         if (groupIndex == currentChannelGroupIndex) {
             if (currentLiveChannelIndex > -1)

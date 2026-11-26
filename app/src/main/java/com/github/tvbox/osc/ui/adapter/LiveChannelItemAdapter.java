@@ -9,7 +9,6 @@ import com.github.tvbox.osc.R;
 import com.github.tvbox.osc.bean.LiveChannelItem;
 
 import java.util.ArrayList;
-import java.util.List;
 
 /**
  * @author pj567
@@ -19,37 +18,20 @@ import java.util.List;
 public class LiveChannelItemAdapter extends BaseQuickAdapter<LiveChannelItem, BaseViewHolder> {
     private int selectedChannelIndex = -1;
     private int focusedChannelIndex = -1;
-    /** 三好TV：搜索态下用于显示「频道名 · 分组名」，为 null 时显示频道原名。 */
-    private List<String> displayLabels = null;
-    /** 三好TV：搜索结果跨分组，选中/焦点状态改按列表位置判断。 */
-    private boolean usePositionIndex = false;
 
     public LiveChannelItemAdapter() {
         super(R.layout.item_live_channel, new ArrayList<>());
-    }
-
-    public void setDisplayLabels(List<String> labels) {
-        this.displayLabels = labels;
-        this.usePositionIndex = labels != null;
     }
 
     @Override
     protected void convert(BaseViewHolder holder, LiveChannelItem item) {
         TextView tvChannelNum = holder.getView(R.id.tvChannelNum);
         TextView tvChannel = holder.getView(R.id.tvChannelName);
-        int position = holder.getAdapterPosition();
-        if (displayLabels != null) {
-            // 搜索结果：序号改为 1..N，名称附加所属分组，方便跨分组定位
-            tvChannelNum.setText(String.format("%s", position + 1));
-            String label = position >= 0 && position < displayLabels.size() ? displayLabels.get(position) : item.getChannelName();
-            tvChannel.setText(label);
-        } else {
-            tvChannelNum.setText(String.format("%s", item.getChannelNum()));
-            tvChannel.setText(item.getChannelName());
-        }
+        tvChannelNum.setText(String.format("%s", item.getChannelNum()));
+        tvChannel.setText(item.getChannelName());
         tvChannelNum.setSelected(true);
         tvChannel.setSelected(true);
-        int channelIndex = usePositionIndex ? holder.getAdapterPosition() : item.getChannelIndex();
+        int channelIndex = item.getChannelIndex();
         holder.itemView.setSelected(channelIndex == selectedChannelIndex);
         if (channelIndex == selectedChannelIndex && channelIndex != focusedChannelIndex) {
             tvChannelNum.setTextColor(mContext.getResources().getColor(R.color.color_1890FF));
