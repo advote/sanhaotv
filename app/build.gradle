@@ -6,7 +6,7 @@ android {
     defaultConfig {
         applicationId 'com.sanhao.tv'
         targetSdkVersion 28
-        versionCode 65
+        versionCode 66
         versionName '1.1.1'
         multiDexEnabled true
         //设置room的Schema的位置
